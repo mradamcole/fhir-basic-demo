@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Client-only FHIR testing console demo SPA",
   "scripts": {
-    "predev": "node scripts/update-build-counter.mjs",
     "dev": "vite --open /app.html",
     "prebuild": "node scripts/update-build-counter.mjs",
     "build": "tsc -b && vite build",

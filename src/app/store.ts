@@ -36,6 +36,7 @@ type AppState = {
   setRoute: (route: AppRoute) => void;
   setActiveOp: (op: CrudsOperation) => void;
   setConnection: (connection: ConnectionConfig) => void;
+  beginNewConnection: () => void;
   saveConnectionProfile: () => void;
   selectProfile: (profileId: string) => void;
   renameProfile: (profileId: string, nextName: string) => void;
@@ -61,6 +62,13 @@ const defaultConnection: ConnectionConfig = {
   baseUrl: fixtureBaseUrl,
   authType: 'none',
   mode: 'demo'
+};
+
+const defaultLiveConnectionDraft: ConnectionConfig = {
+  profileName: '',
+  baseUrl: '',
+  authType: 'none',
+  mode: 'live'
 };
 
 function ensureDemoProfile(profiles: StoredProfile[]): StoredProfile[] {
@@ -136,6 +144,15 @@ function profilesMatchByConnection(a: StoredProfile, b: StoredProfile): boolean 
   return true;
 }
 
+function dedupeProfilesByConnection(profiles: StoredProfile[]): StoredProfile[] {
+  const unique: StoredProfile[] = [];
+  for (const profile of profiles) {
+    if (unique.some((existing) => profilesMatchByConnection(existing, profile))) continue;
+    unique.push(profile);
+  }
+  return unique;
+}
+
 const storedProfiles = readJson<StoredProfile[]>(STORAGE_KEYS.profiles, []);
 const storedProfileId = readJson<string | undefined>(STORAGE_KEYS.currentProfileId, undefined);
 const normalizedStoredProfiles = storedProfiles.map((profile) => normalizeStoredProfile(profile, profile.id));
@@ -185,18 +202,27 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setActiveOp: (activeOp) => set({ activeOp }),
   setConnection: (connection) => set({ connection }),
+  beginNewConnection: () =>
+    set(() => {
+      writeJson(STORAGE_KEYS.currentProfileId, undefined);
+      return {
+        currentProfileId: undefined,
+        connection: { ...defaultLiveConnectionDraft }
+      };
+    }),
   saveConnectionProfile: () =>
     set((state) => {
       const normalized = normalizeStoredProfile(state.connection);
-      const matchingIndex = state.profiles.findIndex((profile) => profilesMatchByConnection(profile, normalized));
+      const dedupedProfiles = dedupeProfilesByConnection(state.profiles);
+      const matchingIndex = dedupedProfiles.findIndex((profile) => profilesMatchByConnection(profile, normalized));
       const profileToPersist =
         matchingIndex >= 0
-          ? normalizeStoredProfile(normalized, state.profiles[matchingIndex]?.id)
-          : normalizeStoredProfile(normalized, createUniqueProfileId(normalized.profileName, state.profiles));
+          ? normalizeStoredProfile(normalized, dedupedProfiles[matchingIndex]?.id)
+          : normalizeStoredProfile(normalized, createUniqueProfileId(normalized.profileName, dedupedProfiles));
       const profiles =
         matchingIndex >= 0
-          ? state.profiles.map((profile, index) => (index === matchingIndex ? profileToPersist : profile))
-          : [profileToPersist, ...state.profiles];
+          ? dedupedProfiles.map((profile, index) => (index === matchingIndex ? profileToPersist : profile))
+          : [profileToPersist, ...dedupedProfiles];
       writeJson(STORAGE_KEYS.profiles, profiles);
       writeJson(STORAGE_KEYS.currentProfileId, profileToPersist.id);
       return {

@@ -134,6 +134,22 @@ describe('app store profile management', () => {
     expect(savedProfiles).toHaveLength(3);
   });
 
+  it('does not save duplicate profiles for matching connection details', async () => {
+    const duplicateProfile = {
+      id: 'qa-basic-duplicate',
+      ...liveBasicConnection
+    };
+    localStorage.setItem(STORAGE_KEYS.profiles, JSON.stringify([duplicateProfile, duplicateProfile]));
+
+    const useAppStore = await loadStore();
+    useAppStore.getState().setConnection(liveBasicConnection);
+    useAppStore.getState().saveConnectionProfile();
+
+    const savedProfiles = JSON.parse(localStorage.getItem(STORAGE_KEYS.profiles) ?? '[]') as Array<Record<string, unknown>>;
+    expect(savedProfiles.filter((profile) => profile.profileName === 'QA Basic')).toHaveLength(1);
+    expect(savedProfiles).toHaveLength(2);
+  });
+
   it('renames active profile and updates active connection name', async () => {
     const useAppStore = await loadStore();
     useAppStore.getState().setConnection({

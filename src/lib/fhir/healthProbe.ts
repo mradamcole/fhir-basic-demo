@@ -25,10 +25,7 @@ export async function runHealthAndMetadataCheck({
   try {
     const baseUrl = normalizeBaseUrl(connection.baseUrl);
     const healthUrl = joinBaseUrlPath(baseUrl, paths.health);
-    const healthResult =
-      connection.mode === 'demo'
-        ? await demoFhirRequest('GET', healthUrl)
-        : await fhirRequest({ method: 'GET', url: healthUrl, auth: connection });
+    const healthResult = await runHealthCheckWithCorsAuthFallback(connection, healthUrl);
 
     const checkedAt = new Date().toISOString();
 
@@ -119,4 +116,48 @@ export async function runHealthAndMetadataCheck({
     });
     showToast(uiError.message ?? 'Connection failed.');
   }
+}
+
+async function runHealthCheckWithCorsAuthFallback(connection: ConnectionConfig, healthUrl: string) {
+  if (connection.mode === 'demo') {
+    return demoFhirRequest('GET', healthUrl);
+  }
+
+  try {
+    return await fhirRequest({ method: 'GET', url: healthUrl, auth: connection });
+  } catch (error) {
+    const uiError = error as Partial<UiError>;
+    const canRetryWithoutAuth = connection.authType !== 'none' && (uiError.kind === 'cors_error' || uiError.kind === 'network_error');
+    if (!canRetryWithoutAuth) throw error;
+
+    const noAuthConnection: ConnectionConfig = { ...connection, authType: 'none' };
+    try {
+      return await fhirRequest({ method: 'GET', url: healthUrl, auth: noAuthConnection });
+    } catch (retryError) {
+      const retryUiError = retryError as Partial<UiError>;
+      const canUseOpaqueLivenessFallback = retryUiError.kind === 'cors_error' || retryUiError.kind === 'network_error';
+      if (!canUseOpaqueLivenessFallback) throw retryError;
+      return runOpaqueHealthLivenessCheck(healthUrl);
+    }
+  }
+}
+
+async function runOpaqueHealthLivenessCheck(healthUrl: string) {
+  const started = performance.now();
+  const response = await fetch(healthUrl, {
+    method: 'GET',
+    mode: 'no-cors',
+    cache: 'no-store'
+  });
+  const elapsedMs = Math.round(performance.now() - started);
+  return {
+    status: response.status,
+    ok: response.type === 'opaque',
+    headers: response.headers,
+    textBody: '',
+    jsonBody: undefined,
+    elapsedMs,
+    contentType: '',
+    url: healthUrl
+  };
 }

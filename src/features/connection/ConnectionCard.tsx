@@ -1,4 +1,4 @@
-import { Eye, EyeOff, PlugZap, Save } from 'lucide-react';
+import { Eye, EyeOff, Plus, PlugZap, Save } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../app/store';
 import { runHealthAndMetadataCheck } from '../../lib/fhir/healthProbe';
@@ -9,6 +9,7 @@ export function ConnectionCard() {
   const drawerAnimationMs = 220;
   const connection = useAppStore((state) => state.connection);
   const setConnection = useAppStore((state) => state.setConnection);
+  const beginNewConnection = useAppStore((state) => state.beginNewConnection);
   const profiles = useAppStore((state) => state.profiles);
   const currentProfileId = useAppStore((state) => state.currentProfileId);
   const saveConnectionProfile = useAppStore((state) => state.saveConnectionProfile);
@@ -27,6 +28,19 @@ export function ConnectionCard() {
   const [activatingProfileId, setActivatingProfileId] = useState<string | null>(null);
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const closeTimerRef = useRef<number | null>(null);
+
+  const deriveDraftProfileName = (baseUrl: string): string => {
+    const trimmedBaseUrl = baseUrl.trim();
+    if (!trimmedBaseUrl) return 'New connection';
+    try {
+      const parsed = new URL(trimmedBaseUrl);
+      if (!['http:', 'https:'].includes(parsed.protocol)) return 'Live Server';
+      const pathname = parsed.pathname.replace(/\/+$/, '');
+      return `${parsed.host}${pathname === '/' ? '' : pathname}` || 'Live Server';
+    } catch {
+      return 'Live Server';
+    }
+  };
 
   useEffect(() => {
     setDraft(connection);
@@ -151,18 +165,31 @@ export function ConnectionCard() {
     }, drawerAnimationMs);
   };
 
+  const createNewConnection = () => {
+    beginNewConnection();
+    setDraft({
+      profileName: '',
+      baseUrl: '',
+      authType: 'none',
+      mode: 'live'
+    });
+  };
+
   return (
     <section className="card" aria-labelledby="connection-title">
       <div className="card-header">
         <div className="card-title" id="connection-title">
           Connection
         </div>
-        <div className="row" style={{ marginLeft: 'auto' }}>
+        <div className="row" style={{ marginLeft: 'auto', flexWrap: 'nowrap', alignItems: 'center', gap: 8 }}>
           <select
             id="profileName"
             aria-label="Profile name"
             value={currentProfileId ?? ''}
             onChange={(event) => {
+              if (!event.target.value) {
+                return;
+              }
               const selectedProfile = profiles.find((profile) => profile.id === event.target.value);
               if (selectedProfile) {
                 setDraft(selectedProfile);
@@ -170,12 +197,23 @@ export function ConnectionCard() {
               selectProfile(event.target.value);
             }}
           >
+            {currentProfileId == null && <option value="">{deriveDraftProfileName(draft.baseUrl)}</option>}
             {profiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profile.profileName}
               </option>
             ))}
           </select>
+          <button
+            className="btn secondary"
+            type="button"
+            onClick={createNewConnection}
+            aria-label="New connection"
+            title="New connection"
+            style={{ width: 40, minHeight: 40, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          >
+            <Plus size={15} />
+          </button>
         </div>
       </div>
       <div className="card-body">
