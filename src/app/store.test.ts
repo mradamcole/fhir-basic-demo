@@ -133,4 +133,38 @@ describe('app store profile management', () => {
     expect(savedProfiles.map((profile) => profile.profileName)).toEqual(expect.arrayContaining(['Primary', 'Secondary', 'Demo Data']));
     expect(savedProfiles).toHaveLength(3);
   });
+
+  it('renames active profile and updates active connection name', async () => {
+    const useAppStore = await loadStore();
+    useAppStore.getState().setConnection({
+      ...liveBasicConnection,
+      profileName: 'Original Name',
+      baseUrl: 'https://rename.example.com/fhir'
+    });
+    useAppStore.getState().saveConnectionProfile();
+    const activeId = useAppStore.getState().currentProfileId;
+    expect(activeId).toBeDefined();
+
+    useAppStore.getState().renameProfile(activeId!, 'Renamed Profile');
+
+    expect(useAppStore.getState().connection.profileName).toBe('Renamed Profile');
+    const savedProfiles = JSON.parse(localStorage.getItem(STORAGE_KEYS.profiles) ?? '[]') as Array<Record<string, unknown>>;
+    expect(savedProfiles[0]?.profileName).toBe('Renamed Profile');
+  });
+
+  it('uses mode-aware default when profile rename is blank', async () => {
+    const useAppStore = await loadStore();
+    useAppStore.getState().setConnection({
+      ...liveBasicConnection,
+      profileName: 'Original Name',
+      baseUrl: 'https://blank-name.example.com/fhir'
+    });
+    useAppStore.getState().saveConnectionProfile();
+    const activeId = useAppStore.getState().currentProfileId;
+    expect(activeId).toBeDefined();
+
+    useAppStore.getState().renameProfile(activeId!, '   ');
+
+    expect(useAppStore.getState().connection.profileName).toBe('blank-name.example.com/fhir');
+  });
 });

@@ -38,6 +38,7 @@ type AppState = {
   setConnection: (connection: ConnectionConfig) => void;
   saveConnectionProfile: () => void;
   selectProfile: (profileId: string) => void;
+  renameProfile: (profileId: string, nextName: string) => void;
   deleteProfile: (profileId: string) => void;
   clearProfileCredentials: (profileId: string) => void;
   setEndpoint: (endpoint: EndpointState) => void;
@@ -77,12 +78,14 @@ function deriveDefaultProfileName(baseUrl: string): string {
   }
 }
 
+function resolveProfileName(connection: Pick<ConnectionConfig, 'profileName' | 'mode' | 'baseUrl'>): string {
+  const trimmedName = connection.profileName.trim();
+  if (trimmedName) return trimmedName;
+  return connection.mode === 'demo' ? 'Demo Data' : deriveDefaultProfileName(connection.baseUrl);
+}
+
 function normalizeStoredProfile(connection: ConnectionConfig, id?: string): StoredProfile {
-  const profileName = connection.profileName.trim()
-    ? connection.profileName.trim()
-    : connection.mode === 'demo'
-      ? 'Demo Data'
-      : deriveDefaultProfileName(connection.baseUrl);
+  const profileName = resolveProfileName(connection);
   const profile: StoredProfile = {
     id: id ?? profileIdFromName(profileName),
     ...connection
@@ -173,6 +176,21 @@ export const useAppStore = create<AppState>((set) => ({
       if (!profile) return {};
       writeJson(STORAGE_KEYS.currentProfileId, profile.id);
       return { connection: { ...profile }, currentProfileId: profile.id };
+    }),
+  renameProfile: (profileId, nextName) =>
+    set((state) => {
+      const target = state.profiles.find((profile) => profile.id === profileId);
+      if (!target) return {};
+      const normalizedName = resolveProfileName({
+        profileName: nextName,
+        mode: target.mode,
+        baseUrl: target.baseUrl
+      });
+      const profiles = state.profiles.map((profile) => (profile.id === profileId ? { ...profile, profileName: normalizedName } : profile));
+      writeJson(STORAGE_KEYS.profiles, profiles);
+      const connection =
+        state.currentProfileId === profileId ? { ...state.connection, profileName: normalizedName } : state.connection;
+      return { profiles, connection };
     }),
   deleteProfile: (profileId) =>
     set((state) => {

@@ -2,8 +2,7 @@ import { Eye, EyeOff, PlugZap, Save } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../app/store';
 import { normalizeBaseUrl } from '../../lib/fhir/client';
-import type { AuthType, ConnectionMode } from '../../lib/fhir/types';
-import { fixtureBaseUrl } from '../../test/fixtures/fhir';
+import type { AuthType } from '../../lib/fhir/types';
 
 export function ConnectionCard() {
   const drawerAnimationMs = 220;
@@ -13,6 +12,7 @@ export function ConnectionCard() {
   const currentProfileId = useAppStore((state) => state.currentProfileId);
   const saveConnectionProfile = useAppStore((state) => state.saveConnectionProfile);
   const selectProfile = useAppStore((state) => state.selectProfile);
+  const renameProfile = useAppStore((state) => state.renameProfile);
   const deleteProfile = useAppStore((state) => state.deleteProfile);
   const clearProfileCredentials = useAppStore((state) => state.clearProfileCredentials);
   const showToast = useAppStore((state) => state.showToast);
@@ -20,11 +20,22 @@ export function ConnectionCard() {
   const [showSecret, setShowSecret] = useState(false);
   const [isProfileManagerMounted, setIsProfileManagerMounted] = useState(false);
   const [isProfileManagerOpen, setIsProfileManagerOpen] = useState(false);
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const closeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setDraft(connection);
   }, [connection]);
+
+  useEffect(() => {
+    setNameDrafts((previous) => {
+      const next: Record<string, string> = {};
+      for (const profile of profiles) {
+        next[profile.id] = previous[profile.id] ?? profile.profileName;
+      }
+      return next;
+    });
+  }, [profiles]);
 
   useEffect(
     () => () => {
@@ -46,7 +57,6 @@ export function ConnectionCard() {
 
   const update = (patch: Partial<typeof draft>) => {
     const next = { ...draft, ...patch };
-    if (patch.mode === 'demo') next.baseUrl = fixtureBaseUrl;
     setDraft(next);
     setConnection(next);
   };
@@ -77,6 +87,19 @@ export function ConnectionCard() {
     showToast('Persisted credentials removed for profile.');
   };
 
+  const onProfileNameDraftChange = (profileId: string, value: string) => {
+    setNameDrafts((previous) => ({ ...previous, [profileId]: value }));
+  };
+
+  const saveProfileName = (profileId: string) => {
+    const existing = profiles.find((profile) => profile.id === profileId);
+    if (!existing) return;
+    const draftName = nameDrafts[profileId] ?? '';
+    if (draftName === existing.profileName) return;
+    renameProfile(profileId, draftName);
+    showToast('Profile name updated.');
+  };
+
   const openProfileManager = () => {
     if (closeTimerRef.current !== null) {
       window.clearTimeout(closeTimerRef.current);
@@ -103,30 +126,23 @@ export function ConnectionCard() {
         <div className="card-title" id="connection-title">
           Connection
         </div>
-        <div className="row">
+        <div className="row" style={{ marginLeft: 'auto' }}>
           <select
-            id="ProfileName"
-            aria-label="Connection mode"
-            value={draft.mode}
-            onChange={(event) => update({ mode: event.target.value as ConnectionMode })}
+            id="profileName"
+            aria-label="Profile name"
+            value={currentProfileId ?? ''}
+            onChange={(event) => selectProfile(event.target.value)}
           >
-            <option value="demo">Demo Data</option>
-            <option value="live">Live Server</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.profileName}
+              </option>
+            ))}
           </select>
         </div>
       </div>
       <div className="card-body">
         <div className="form-grid">
-          <div className="field">
-            <label htmlFor="profileName">Connection Name</label>
-            <input
-              id="profileName"
-              className="input"
-              value={draft.profileName}
-              onChange={(event) => update({ profileName: event.target.value })}
-              placeholder="Auto: host/path when left blank"
-            />
-          </div>
           <div className="field">
             <label htmlFor="baseUrl">Base Path</label>
             <input
@@ -229,7 +245,18 @@ export function ConnectionCard() {
                       </span>
                     </div>
                     <div>
-                      <div className="req-title">{profile.profileName}</div>
+                      <input
+                        className="input"
+                        aria-label={`Profile name for ${profile.id}`}
+                        value={nameDrafts[profile.id] ?? ''}
+                        onChange={(event) => onProfileNameDraftChange(profile.id, event.target.value)}
+                        onBlur={() => saveProfileName(profile.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
                       <div className="req-sub">
                         {profile.mode.toUpperCase()} | {profile.authType.toUpperCase()} | {profile.baseUrl}
                       </div>
