@@ -12,6 +12,7 @@
 .app-shell.sidebar-collapsed .brand h1,
 .app-shell.sidebar-collapsed .brand span,
 .app-shell.sidebar-collapsed .nav-item .label,
+.app-shell.sidebar-collapsed .nav-section-toggle .label,
 .app-shell.sidebar-collapsed .nav-section-title,
 .app-shell.sidebar-collapsed .lock {
   opacity: 0;
@@ -21,8 +22,13 @@
 }
 
 .app-shell.sidebar-collapsed .brand,
-.app-shell.sidebar-collapsed .nav-item {
+.app-shell.sidebar-collapsed .nav-item,
+.app-shell.sidebar-collapsed .nav-section-toggle {
   justify-content: center;
+}
+
+.app-shell.sidebar-collapsed .sidebar-bottom {
+  display: none;
 }
 
 .sidebar {
@@ -38,6 +44,24 @@
   border-right: 1px solid var(--line);
   backdrop-filter: blur(18px);
   transition: padding 0.24s ease, gap 0.24s ease;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sidebar-bottom .nav-section-toggle {
+  margin: 0;
+}
+
+.sidebar-panel-wrap {
+  padding: 0 8px 8px;
 }
 
 .brand {
@@ -88,6 +112,40 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   transition: opacity 0.16s ease;
+}
+
+.nav-section-toggle {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 8px 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+}
+
+.nav-section-toggle .label {
+  flex: 1;
+}
+
+.toggle-icon {
+  transition: transform 0.16s ease;
+}
+
+.toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.nav-section-toggle:hover {
+  color: var(--text);
 }
 
 .nav-section-title::after {
@@ -174,7 +232,7 @@
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: stretch;
   flex: 1;
@@ -213,6 +271,52 @@
 
 .card.pad {
   padding: 18px;
+}
+
+.history-panel {
+  padding: 18px;
+}
+
+.history-panel-sidebar {
+  padding: 10px 0 0;
+}
+
+.history-panel-sidebar .history-panel-title {
+  margin-bottom: 10px !important;
+  font-size: 14px;
+}
+
+.history-panel-sidebar .history-panel-title .row {
+  gap: 8px;
+}
+
+.history-panel-sidebar .btn.ghost {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.history-panel-sidebar .history-panel-notice {
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+  color: var(--muted);
+}
+
+.history-panel-sidebar .history-panel-list .request-item {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.history-panel-sidebar .history-panel-list .req-status {
+  display: none;
+}
+
+.history-panel-sidebar .metrics {
+  gap: 10px;
+  font-size: 13px;
 }
 
 .card-header {
@@ -905,13 +1009,15 @@ th {
   .brand h1,
   .brand span,
   .nav-item .label,
+  .nav-section-toggle .label,
   .nav-section-title,
   .lock {
     display: none;
   }
 
   .brand,
-  .nav-item {
+  .nav-item,
+  .nav-section-toggle {
     justify-content: center;
   }
 
@@ -952,6 +1058,10 @@ th {
 
   .brand,
   .nav-section-title {
+    display: none;
+  }
+
+  .sidebar-bottom {
     display: none;
   }
 

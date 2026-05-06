@@ -1,4 +1,4 @@
-import { BookOpen, ChevronsLeft, Lock, Menu, Moon, Sun } from 'lucide-react';
+import { BookOpen, ChevronRight, Lock, Menu, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ConnectionCard } from '../features/connection/ConnectionCard';
 import { CrudsTester } from '../features/cruds/CrudsTester';
@@ -9,6 +9,14 @@ import { ImplementationGuidesPage } from '../features/implementation-guides/Impl
 import { buildCounter } from './buildInfo';
 import { comingSoonItems, primaryNavItems } from './navConfig';
 import { useAppStore } from './store';
+
+const SIDEBAR_RECENT_REQUESTS_EXPANDED_KEY = 'sidebarRecentRequestsExpanded';
+const SIDEBAR_METRICS_EXPANDED_KEY = 'sidebarMetricsExpanded';
+
+function readToggleState(key: string) {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(key) === 'true';
+}
 
 function statusPresentation(status: ReturnType<typeof useAppStore.getState>['endpoint']['status']) {
   if (status === 'reachable') return { label: 'FHIR API: Reachable', tone: 'green' };
@@ -29,6 +37,11 @@ export function AppShell() {
   const connection = useAppStore((state) => state.connection);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
+  const [isComingSoonExpanded, setIsComingSoonExpanded] = useState(false);
+  const [isRecentRequestsExpanded, setIsRecentRequestsExpanded] = useState(() =>
+    readToggleState(SIDEBAR_RECENT_REQUESTS_EXPANDED_KEY),
+  );
+  const [isMetricsExpanded, setIsMetricsExpanded] = useState(() => readToggleState(SIDEBAR_METRICS_EXPANDED_KEY));
   const status = statusPresentation(endpoint.status);
 
   useEffect(() => {
@@ -44,6 +57,14 @@ export function AppShell() {
     window.addEventListener('resize', closeMobileSidebar);
     return () => window.removeEventListener('resize', closeMobileSidebar);
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_RECENT_REQUESTS_EXPANDED_KEY, String(isRecentRequestsExpanded));
+  }, [isRecentRequestsExpanded]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_METRICS_EXPANDED_KEY, String(isMetricsExpanded));
+  }, [isMetricsExpanded]);
 
   const handleRouteChange = (nextRoute: (typeof primaryNavItems)[number]['route']) => {
     if (!nextRoute) return;
@@ -87,28 +108,62 @@ export function AppShell() {
           ))}
         </nav>
 
-        <div className="nav-section-title">Coming Soon</div>
-        <nav className="nav-group" aria-label="Coming soon">
-          {comingSoonItems.slice(0, 7).map((item) => (
-            <button className="nav-item" key={item.id} type="button" disabled title={`${item.label} is planned for a later release.`}>
-              <item.Icon size={18} />
-              <span className="label">{item.label}</span>
-              <Lock className="lock" size={13} />
-            </button>
-          ))}
-        </nav>
+        <button
+          className="nav-section-toggle"
+          type="button"
+          aria-expanded={isComingSoonExpanded}
+          aria-controls="coming-soon-nav"
+          onClick={() => setIsComingSoonExpanded((prev) => !prev)}
+        >
+          <span className="label">Coming Soon</span>
+          <ChevronRight className={`toggle-icon ${isComingSoonExpanded ? 'expanded' : ''}`} size={14} />
+        </button>
+        {isComingSoonExpanded && (
+          <nav className="nav-group" id="coming-soon-nav" aria-label="Coming soon">
+            {comingSoonItems.slice(0, 7).map((item) => (
+              <button className="nav-item" key={item.id} type="button" disabled title={`${item.label} is planned for a later release.`}>
+                <item.Icon size={18} />
+                <span className="label">{item.label}</span>
+                <Lock className="lock" size={13} />
+              </button>
+            ))}
+          </nav>
+        )}
 
-        <div style={{ marginTop: 'auto', borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+        <div className="sidebar-bottom">
           <button
-            className="nav-item"
+            className="nav-section-toggle"
             type="button"
-            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+            aria-expanded={isRecentRequestsExpanded}
+            aria-controls="recent-requests-nav"
+            onClick={() => setIsRecentRequestsExpanded((prev) => !prev)}
           >
-            <ChevronsLeft size={18} />
-            <span className="label">{isSidebarCollapsed ? 'Expand' : 'Collapse'}</span>
+            <span className="label">Recent Console Requests</span>
+            <ChevronRight className={`toggle-icon ${isRecentRequestsExpanded ? 'expanded' : ''}`} size={14} />
           </button>
+          {isRecentRequestsExpanded && (
+            <div className="sidebar-panel-wrap" id="recent-requests-nav">
+              <RecentRequestsPanel variant="sidebar" />
+            </div>
+          )}
+
+          <button
+            className="nav-section-toggle"
+            type="button"
+            aria-expanded={isMetricsExpanded}
+            aria-controls="metrics-nav"
+            onClick={() => setIsMetricsExpanded((prev) => !prev)}
+          >
+            <span className="label">Console Metrics</span>
+            <ChevronRight className={`toggle-icon ${isMetricsExpanded ? 'expanded' : ''}`} size={14} />
+          </button>
+          {isMetricsExpanded && (
+            <div className="sidebar-panel-wrap" id="metrics-nav">
+              <MetricsPanel variant="sidebar" />
+            </div>
+          )}
         </div>
+
       </aside>
 
       <main className="main">
@@ -149,10 +204,6 @@ export function AppShell() {
                 </div>
                 <CrudsTester />
               </div>
-              <aside className="side-stack">
-                <RecentRequestsPanel />
-                <MetricsPanel />
-              </aside>
             </div>
           ) : (
             <ImplementationGuidesPage />

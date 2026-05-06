@@ -8,22 +8,30 @@ function methodTone(method: string) {
   return 'gray';
 }
 
-export function RecentRequestsPanel() {
+type RecentRequestsPanelProps = {
+  variant?: 'card' | 'sidebar';
+};
+
+export function RecentRequestsPanel({ variant = 'card' }: RecentRequestsPanelProps) {
   const history = useAppStore((state) => state.requestHistory);
   const clearHistory = useAppStore((state) => state.clearHistory);
+  const rootClassName = variant === 'sidebar' ? 'history-panel history-panel-sidebar' : 'card pad';
+  const titleClassName = variant === 'sidebar' ? 'card-title history-panel-title' : 'card-title';
+  const noticeClassName = variant === 'sidebar' ? 'notice history-panel-notice' : 'notice';
+  const listClassName = variant === 'sidebar' ? 'request-list history-panel-list' : 'request-list';
 
   return (
-    <section className="card pad" aria-labelledby="recent-title">
-      <div className="card-title" id="recent-title" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+    <section className={rootClassName} aria-labelledby="recent-title">
+      <div className={titleClassName} id="recent-title" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
         <span className="row"><Clock3 size={18} /> Recent Console Requests</span>
         <button className="btn ghost" type="button" onClick={clearHistory} disabled={!history.length}>
           Clear
         </button>
       </div>
       {!history.length ? (
-        <div className="notice">No console requests yet. Connect to the server or run a CRUDS operation.</div>
+        <div className={noticeClassName}>No console requests yet. Connect to the server or run a CRUDS operation.</div>
       ) : (
-        <div className="request-list">
+        <div className={listClassName}>
           {history.slice(0, 5).map((item) => {
             const url = safeUrl(item.url);
             return (

@@ -80,6 +80,7 @@ export function ConnectionCard() {
     if (activatingProfileId != null) return;
     const selectedProfile = profiles.find((profile) => profile.id === profileId);
     if (!selectedProfile) return;
+    setDraft(selectedProfile);
     selectProfile(profileId);
     closeProfileManager();
     setActivatingProfileId(profileId);
@@ -161,7 +162,13 @@ export function ConnectionCard() {
             id="profileName"
             aria-label="Profile name"
             value={currentProfileId ?? ''}
-            onChange={(event) => selectProfile(event.target.value)}
+            onChange={(event) => {
+              const selectedProfile = profiles.find((profile) => profile.id === event.target.value);
+              if (selectedProfile) {
+                setDraft(selectedProfile);
+              }
+              selectProfile(event.target.value);
+            }}
           >
             {profiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
