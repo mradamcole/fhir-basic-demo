@@ -63,8 +63,23 @@ const defaultConnection: ConnectionConfig = {
   mode: 'demo'
 };
 
+function ensureDemoProfile(profiles: StoredProfile[]): StoredProfile[] {
+  if (profiles.some((profile) => profile.mode === 'demo')) return profiles;
+  return [normalizeStoredProfile(defaultConnection, 'demo'), ...profiles];
+}
+
 function profileIdFromName(profileName: string): string {
   return profileName.toLowerCase().replace(/\W+/g, '-') || 'current';
+}
+
+function createUniqueProfileId(profileName: string, profiles: StoredProfile[]): string {
+  const baseId = profileIdFromName(profileName);
+  if (!profiles.some((profile) => profile.id === baseId)) return baseId;
+  let suffix = 2;
+  while (profiles.some((profile) => profile.id === `${baseId}-${suffix}`)) {
+    suffix += 1;
+  }
+  return `${baseId}-${suffix}`;
 }
 
 function deriveDefaultProfileName(baseUrl: string): string {
@@ -108,9 +123,25 @@ function normalizeStoredProfile(connection: ConnectionConfig, id?: string): Stor
   return profile;
 }
 
+function profilesMatchByConnection(a: StoredProfile, b: StoredProfile): boolean {
+  if (a.mode !== b.mode) return false;
+  if (a.baseUrl !== b.baseUrl) return false;
+  if (a.authType !== b.authType) return false;
+  if (a.authType === 'basic') {
+    return (a.username ?? '') === (b.username ?? '') && (a.password ?? '') === (b.password ?? '');
+  }
+  if (a.authType === 'bearer') {
+    return (a.bearerTokenSessionOnly ?? '') === (b.bearerTokenSessionOnly ?? '');
+  }
+  return true;
+}
+
 const storedProfiles = readJson<StoredProfile[]>(STORAGE_KEYS.profiles, []);
 const storedProfileId = readJson<string | undefined>(STORAGE_KEYS.currentProfileId, undefined);
-const initialProfiles = storedProfiles.length > 0 ? storedProfiles : [normalizeStoredProfile(defaultConnection, 'demo')];
+const normalizedStoredProfiles = storedProfiles.map((profile) => normalizeStoredProfile(profile, profile.id));
+const initialProfiles = ensureDemoProfile(
+  normalizedStoredProfiles.length > 0 ? normalizedStoredProfiles : [normalizeStoredProfile(defaultConnection, 'demo')]
+);
 const initialProfile = initialProfiles.find((profile) => profile.id === storedProfileId) ?? initialProfiles[0];
 
 const storedEndpointPaths = readJson<Partial<EndpointPathsConfig>>(STORAGE_KEYS.endpointPaths, {});
@@ -157,17 +188,21 @@ export const useAppStore = create<AppState>((set) => ({
   saveConnectionProfile: () =>
     set((state) => {
       const normalized = normalizeStoredProfile(state.connection);
-      const existingIndex = state.profiles.findIndex((profile) => profile.id === normalized.id);
+      const matchingIndex = state.profiles.findIndex((profile) => profilesMatchByConnection(profile, normalized));
+      const profileToPersist =
+        matchingIndex >= 0
+          ? normalizeStoredProfile(normalized, state.profiles[matchingIndex]?.id)
+          : normalizeStoredProfile(normalized, createUniqueProfileId(normalized.profileName, state.profiles));
       const profiles =
-        existingIndex >= 0
-          ? state.profiles.map((profile, index) => (index === existingIndex ? normalized : profile))
-          : [normalized, ...state.profiles];
+        matchingIndex >= 0
+          ? state.profiles.map((profile, index) => (index === matchingIndex ? profileToPersist : profile))
+          : [profileToPersist, ...state.profiles];
       writeJson(STORAGE_KEYS.profiles, profiles);
-      writeJson(STORAGE_KEYS.currentProfileId, normalized.id);
+      writeJson(STORAGE_KEYS.currentProfileId, profileToPersist.id);
       return {
         profiles,
-        currentProfileId: normalized.id,
-        connection: { ...normalized }
+        currentProfileId: profileToPersist.id,
+        connection: { ...profileToPersist }
       };
     }),
   selectProfile: (profileId) =>
@@ -194,6 +229,8 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   deleteProfile: (profileId) =>
     set((state) => {
+      const target = state.profiles.find((profile) => profile.id === profileId);
+      if (target?.mode === 'demo') return {};
       const profiles = state.profiles.filter((profile) => profile.id !== profileId);
       const fallbackProfile = profiles[0] ?? normalizeStoredProfile(defaultConnection, 'demo');
       const nextProfiles = profiles.length > 0 ? profiles : [fallbackProfile];

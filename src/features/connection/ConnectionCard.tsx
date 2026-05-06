@@ -1,6 +1,7 @@
 import { Eye, EyeOff, PlugZap, Save } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../app/store';
+import { runHealthAndMetadataCheck } from '../../lib/fhir/healthProbe';
 import { normalizeBaseUrl } from '../../lib/fhir/client';
 import type { AuthType } from '../../lib/fhir/types';
 
@@ -16,10 +17,14 @@ export function ConnectionCard() {
   const deleteProfile = useAppStore((state) => state.deleteProfile);
   const clearProfileCredentials = useAppStore((state) => state.clearProfileCredentials);
   const showToast = useAppStore((state) => state.showToast);
+  const setHealthProbe = useAppStore((state) => state.setHealthProbe);
+  const setCapability = useAppStore((state) => state.setCapability);
+  const setMetadataProbeFailure = useAppStore((state) => state.setMetadataProbeFailure);
   const [draft, setDraft] = useState(connection);
   const [showSecret, setShowSecret] = useState(false);
   const [isProfileManagerMounted, setIsProfileManagerMounted] = useState(false);
   const [isProfileManagerOpen, setIsProfileManagerOpen] = useState(false);
+  const [activatingProfileId, setActivatingProfileId] = useState<string | null>(null);
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const closeTimerRef = useRef<number | null>(null);
 
@@ -71,10 +76,25 @@ export function ConnectionCard() {
     }
   };
 
-  const activateProfile = (profileId: string) => {
+  const activateProfile = async (profileId: string) => {
+    if (activatingProfileId != null) return;
+    const selectedProfile = profiles.find((profile) => profile.id === profileId);
+    if (!selectedProfile) return;
     selectProfile(profileId);
     closeProfileManager();
-    showToast('Profile activated.');
+    setActivatingProfileId(profileId);
+    try {
+      await runHealthAndMetadataCheck({
+        connection: selectedProfile,
+        getEndpointPaths: () => useAppStore.getState().endpointPaths,
+        setHealthProbe,
+        setCapability,
+        setMetadataProbeFailure,
+        showToast
+      });
+    } finally {
+      setActivatingProfileId(null);
+    }
   };
 
   const removeProfile = (profileId: string) => {
@@ -85,6 +105,16 @@ export function ConnectionCard() {
   const removeProfileCredentials = (profileId: string) => {
     clearProfileCredentials(profileId);
     showToast('Persisted credentials removed for profile.');
+  };
+
+  const hasPersistedCredentials = (profile: (typeof profiles)[number]): boolean => {
+    if (profile.authType === 'basic') {
+      return Boolean(profile.username?.trim() || profile.password?.trim());
+    }
+    if (profile.authType === 'bearer') {
+      return Boolean(profile.bearerTokenSessionOnly?.trim());
+    }
+    return false;
   };
 
   const onProfileNameDraftChange = (profileId: string, value: string) => {
@@ -237,43 +267,64 @@ export function ConnectionCard() {
                 Saved profiles and credentials are local to this browser. Remove credentials without deleting the full profile.
               </p>
               <div className="request-list">
-                {profiles.map((profile) => (
-                  <div className="request-item" key={profile.id}>
-                    <div>
-                      <span className={`badge ${profile.id === currentProfileId ? 'blue' : 'gray'}`}>
-                        {profile.id === currentProfileId ? 'Active' : 'Saved'}
-                      </span>
-                    </div>
-                    <div>
-                      <input
-                        className="input"
-                        aria-label={`Profile name for ${profile.id}`}
-                        value={nameDrafts[profile.id] ?? ''}
-                        onChange={(event) => onProfileNameDraftChange(profile.id, event.target.value)}
-                        onBlur={() => saveProfileName(profile.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.currentTarget.blur();
-                          }
-                        }}
-                      />
-                      <div className="req-sub">
-                        {profile.mode.toUpperCase()} | {profile.authType.toUpperCase()} | {profile.baseUrl}
+                {profiles.map((profile) => {
+                  const profileHasCredentials = hasPersistedCredentials(profile);
+                  const authLabel = profileHasCredentials ? profile.authType.toUpperCase() : 'ANONYMOUS';
+                  const isDemoProfile = profile.mode === 'demo';
+                  return (
+                    <div className="request-item profile-request-item" key={profile.id}>
+                      <div>
+                        <span className={`badge ${profile.id === currentProfileId ? 'blue' : 'gray'}`}>
+                          {profile.id === currentProfileId ? 'Active' : 'Saved'}
+                        </span>
+                      </div>
+                      <div>
+                        {isDemoProfile ? (
+                          <>
+                            <div style={{ fontWeight: 600 }}>{profile.profileName}</div>
+                            <div className="req-sub">Built-in fixture data so you can test app behavior without a live server.</div>
+                          </>
+                        ) : (
+                          <input
+                            className="input"
+                            aria-label={`Profile name for ${profile.id}`}
+                            value={nameDrafts[profile.id] ?? ''}
+                            onChange={(event) => onProfileNameDraftChange(profile.id, event.target.value)}
+                            onBlur={() => saveProfileName(profile.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.currentTarget.blur();
+                              }
+                            }}
+                          />
+                        )}
+                        <div className="req-sub">
+                          {profile.mode.toUpperCase()} | {authLabel} | {profile.baseUrl}
+                        </div>
+                      </div>
+                      <div className="row profile-request-actions" style={{ justifyContent: 'flex-end' }}>
+                        <button
+                          className="btn secondary"
+                          type="button"
+                          onClick={() => activateProfile(profile.id)}
+                          disabled={activatingProfileId != null}
+                        >
+                          {activatingProfileId === profile.id ? 'Connecting...' : 'Use'}
+                        </button>
+                        {!isDemoProfile && profileHasCredentials && (
+                          <button className="btn ghost" type="button" onClick={() => removeProfileCredentials(profile.id)}>
+                            Remove Credentials
+                          </button>
+                        )}
+                        {!isDemoProfile && (
+                          <button className="btn danger" type="button" onClick={() => removeProfile(profile.id)}>
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="row" style={{ justifyContent: 'flex-end' }}>
-                      <button className="btn secondary" type="button" onClick={() => activateProfile(profile.id)}>
-                        Use
-                      </button>
-                      <button className="btn ghost" type="button" onClick={() => removeProfileCredentials(profile.id)}>
-                        Remove Credentials
-                      </button>
-                      <button className="btn danger" type="button" onClick={() => removeProfile(profile.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>

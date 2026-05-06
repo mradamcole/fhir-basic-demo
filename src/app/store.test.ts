@@ -55,7 +55,7 @@ describe('app store profile management', () => {
     expect(savedProfiles[0]?.password).toBe('qa-pass');
   });
 
-  it('removes stale credentials when auth type changes', async () => {
+  it('creates a new profile when auth credentials change', async () => {
     const useAppStore = await loadStore();
     useAppStore.getState().setConnection(liveBasicConnection);
     useAppStore.getState().saveConnectionProfile();
@@ -69,8 +69,8 @@ describe('app store profile management', () => {
 
     const savedProfiles = JSON.parse(localStorage.getItem(STORAGE_KEYS.profiles) ?? '[]') as Array<Record<string, unknown>>;
     expect(savedProfiles[0]?.bearerTokenSessionOnly).toBe('token-1');
-    expect(savedProfiles[0]).not.toHaveProperty('password');
-    expect(savedProfiles[0]).not.toHaveProperty('username');
+    expect(savedProfiles[1]?.password).toBe('qa-pass');
+    expect(savedProfiles).toHaveLength(3);
   });
 
   it('can clear persisted credentials for a selected profile', async () => {
@@ -166,5 +166,28 @@ describe('app store profile management', () => {
     useAppStore.getState().renameProfile(activeId!, '   ');
 
     expect(useAppStore.getState().connection.profileName).toBe('blank-name.example.com/fhir');
+  });
+
+  it('selectProfile immediately switches active connection', async () => {
+    const useAppStore = await loadStore();
+    useAppStore.getState().setConnection({
+      ...liveBasicConnection,
+      profileName: 'Primary',
+      baseUrl: 'https://one.example.com/fhir'
+    });
+    useAppStore.getState().saveConnectionProfile();
+    useAppStore.getState().setConnection({
+      ...liveBasicConnection,
+      profileName: 'Secondary',
+      baseUrl: 'https://two.example.com/fhir'
+    });
+    useAppStore.getState().saveConnectionProfile();
+
+    const secondary = useAppStore.getState().profiles.find((profile) => profile.profileName === 'Secondary');
+    expect(secondary).toBeDefined();
+    useAppStore.getState().selectProfile(secondary!.id);
+
+    expect(useAppStore.getState().currentProfileId).toBe(secondary!.id);
+    expect(useAppStore.getState().connection.baseUrl).toBe('https://two.example.com/fhir');
   });
 });

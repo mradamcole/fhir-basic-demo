@@ -569,6 +569,39 @@ textarea {
   user-select: none;
 }
 
+.json-viewer-box {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--code-bg);
+  padding: 10px 12px;
+}
+
+.json-viewer {
+  display: block;
+  background: var(--code-bg);
+  --base00: var(--code-bg);
+  --base01: #1a2435;
+  --base02: #22324a;
+  --base03: #5f738f;
+  --base04: #8ea0b8;
+  --base05: #e6edf7;
+  --base06: #f2f6ff;
+  --base07: #9fc4ff;
+  --base08: #ff8aa1;
+  --base09: #ffc180;
+  --base0a: #f6d98e;
+  --base0b: #8fd6a9;
+  --base0c: #7fd0de;
+  --base0d: #8fb4ff;
+  --base0e: #c3a4ff;
+  --base0f: #ffae73;
+}
+
+.json-viewer andypf-json-viewer {
+  background: var(--code-bg);
+}
+
 .cruds-tabs {
   display: flex;
   gap: 18px;
@@ -650,6 +683,14 @@ textarea {
 
 .request-item:last-child {
   border-bottom: 0;
+}
+
+.profile-request-item {
+  align-items: start;
+}
+
+.profile-request-actions {
+  align-self: start;
 }
 
 .req-title {
