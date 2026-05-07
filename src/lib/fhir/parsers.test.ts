@@ -1,5 +1,5 @@
 import type { CapabilityStatement } from './types';
-import { getCapabilityOperationSummaries, getCapabilityResourceSummaries } from './parsers';
+import { getCapabilityOperationRows, getCapabilityResourceSummaries } from './parsers';
 
 describe('CapabilityStatement summary parsers', () => {
   it('extracts sorted FHIR resource summaries', () => {
@@ -67,21 +67,10 @@ describe('CapabilityStatement summary parsers', () => {
       ]
     };
 
-    expect(getCapabilityOperationSummaries(capabilityStatement)).toEqual([
-      {
-        prefix: 'Observation',
-        name: '$everything'
-      },
-      {
-        prefix: '',
-        name: '$meta',
-        definition: 'http://example.test/OperationDefinition/meta'
-      },
-      {
-        prefix: 'Patient',
-        name: '$validate',
-        definition: 'http://example.test/OperationDefinition/validate'
-      }
+    expect(getCapabilityOperationRows(capabilityStatement)).toEqual([
+      ['', ['$meta', 'http://example.test/OperationDefinition/meta']],
+      ['Observation', ['$everything']],
+      ['Patient', ['$validate', 'http://example.test/OperationDefinition/validate']]
     ]);
   });
 });

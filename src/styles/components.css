@@ -255,6 +255,12 @@
   min-height: max-content;
 }
 
+.main-stack > .card.cruds-card {
+  height: calc(100vh - var(--topbar-height) - 110px);
+  max-height: calc(100vh - var(--topbar-height) - 110px);
+  min-height: 0;
+}
+
 .top-cards {
   display: grid;
   grid-template-columns: minmax(420px, 0.95fr) minmax(420px, 1.05fr);
@@ -339,6 +345,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
 }
 
 .card-title {
@@ -583,12 +590,14 @@ textarea {
 .table-wrap {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
 }
 
 .mini-panel {
   min-width: 0;
   min-height: 320px;
+  max-height: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -615,7 +624,8 @@ textarea {
   padding: 12px;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .response-grid {
@@ -626,10 +636,21 @@ textarea {
 }
 
 .cruds-response-grid {
-  flex: 1;
+  --cruds-response-card-offset: 40px;
+  flex: 1 1 auto;
   min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
   align-items: stretch;
   margin-top: 0;
+  overflow: hidden;
+}
+
+.cruds-response-grid > .mini-panel {
+  min-height: 300px;
+  height: calc(100% - var(--cruds-response-card-offset));
+  max-height: 100%;
+  overflow: auto;
 }
 
 .response-meta {
@@ -649,7 +670,8 @@ textarea {
   flex: 1;
   margin: 0;
   padding: 12px 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   background: var(--code-bg);
   color: var(--code-text);
   font-family: var(--mono);
@@ -678,7 +700,8 @@ textarea {
 .json-viewer-box {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   background: var(--code-bg);
   padding: 10px 12px;
 }

@@ -30,7 +30,7 @@
     iframe {
       width: 100%;
       max-width: 760px;
-      height: 320px;
+      height: 400px;
       border: 1px solid #94a3b8;
       border-radius: 8px;
       background: #fff;
@@ -62,6 +62,8 @@
     <li>Single-click the copy icon — URL copied; icon briefly shows a checkmark.</li>
     <li>Double-click the copy icon — should open the resolved URL in a new tab (path-only values use the first configured base).</li>
     <li>With a path like <kbd>/Patient</kbd>, a dark orange <code>{base}</code> prefix should appear before the field; copy should include the full URL.</li>
+    <li>In the third demo (operations), type <kbd>/Patient/123/$</kbd> — operation menu opens; pick <kbd>$everything</kbd> — value becomes <kbd>/Patient/123/$everything</kbd>.</li>
+    <li>Type <kbd>{base}/Patient/123</kbd> (literal token), single-click copy — clipboard should be the first configured base + <kbd>/Patient/123</kbd> (no <code>{base}</code> text).</li>
   </ol>
 
   <script>
@@ -121,6 +123,134 @@
     return sortedTypes.filter(function (r) {
       return String(r).toLowerCase().indexOf(q) !== -1;
     });
+  }
+
+  function uniqueSortedStrings(arr) {
+    var seen = {};
+    var out = [];
+    for (var ui = 0; ui < arr.length; ui++) {
+      var s = arr[ui];
+      if (!s || seen[s]) continue;
+      seen[s] = true;
+      out.push(s);
+    }
+    out.sort(function (a, b) {
+      return a.localeCompare(b);
+    });
+    return out;
+  }
+
+  function normalizeOperationOptions(input) {
+    var map = new Map();
+    if (input == null) return map;
+    if (Array.isArray(input)) {
+      map.set('', uniqueSortedStrings(input.map(String).filter(Boolean)));
+      return map;
+    }
+    if (typeof input === 'object') {
+      Object.keys(input).forEach(function (k) {
+        var arr = input[k];
+        if (!Array.isArray(arr)) return;
+        map.set(k, uniqueSortedStrings(arr.map(String).filter(Boolean)));
+      });
+      return map;
+    }
+    return map;
+  }
+
+  function getOperationTokenAtCaret(value, caretIndex) {
+    var v = normalizeSlashes(String(value));
+    var n = v.length;
+    var caret = typeof caretIndex === 'number' ? caretIndex : 0;
+    if (caret < 0) caret = 0;
+    if (caret > n) caret = n;
+    for (var j = 0; j < n; j++) {
+      if (v[j] !== '$') continue;
+      var prevOk = j === 0 || v[j - 1] === '/' || v[j - 1] === '?' || v[j - 1] === '#';
+      if (!prevOk) continue;
+      var end = n;
+      for (var k = j + 1; k < n; k++) {
+        if (v[k] === '/' || v[k] === '?' || v[k] === '#') {
+          end = k;
+          break;
+        }
+      }
+      if (caret >= j && caret <= end) {
+        var qEnd = Math.min(caret, end);
+        return { start: j, end: end, query: v.slice(j + 1, qEnd) };
+      }
+    }
+    return null;
+  }
+
+  function findResourceBeforeIndex(value, knownResources, baseUrlOptions, dollarIndex) {
+    var v = normalizeSlashes(String(value));
+    var before = v.slice(0, dollarIndex);
+    var qh = before.search(/[?#]/);
+    if (qh >= 0) before = before.slice(0, qh);
+    var pathLike = before;
+    if (/^https?:\/\//i.test(pathLike)) {
+      var matched = '';
+      for (var bi = 0; bi < baseUrlOptions.length; bi++) {
+        var b = String(baseUrlOptions[bi]).replace(/\/+$/, '');
+        if (!b) continue;
+        if (pathLike === b || pathLike.startsWith(b + '/')) {
+          matched = b;
+          break;
+        }
+      }
+      if (matched) {
+        pathLike = pathLike.slice(matched.length);
+        if (!pathLike.startsWith('/')) pathLike = '/' + pathLike;
+      } else {
+        try {
+          var u = new URL(pathLike);
+          pathLike = u.pathname || '/';
+        } catch (eUrl) {
+          pathLike = pathLike.replace(/^https?:\/\/[^/]+/i, '') || '/';
+        }
+      }
+    }
+    if (!pathLike.startsWith('/')) pathLike = '/' + pathLike;
+    var segs = pathLike.split('/').filter(Boolean);
+    var set = {};
+    for (var rj = 0; rj < knownResources.length; rj++) set[knownResources[rj]] = true;
+    var last = null;
+    for (var sk = 0; sk < segs.length; sk++) {
+      if (set[segs[sk]]) last = segs[sk];
+    }
+    return last;
+  }
+
+  function filterOperationsForContext(opMap, resourceType, query) {
+    var q = String(query || '').toLowerCase();
+    var seen = {};
+    var combined = [];
+    function addList(arr) {
+      if (!arr) return;
+      for (var ai = 0; ai < arr.length; ai++) {
+        var op = String(arr[ai]);
+        if (!seen[op]) {
+          seen[op] = true;
+          combined.push(op);
+        }
+      }
+    }
+    addList(opMap.get(''));
+    if (resourceType) addList(opMap.get(resourceType));
+    combined.sort(function (a, b) {
+      return a.localeCompare(b);
+    });
+    if (!q) return combined;
+    return combined.filter(function (op) {
+      return String(op).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function substituteBaseToken(value, baseUrl) {
+    if (!baseUrl) return String(value);
+    var b = String(baseUrl).replace(/\/+$/, '');
+    return String(value).split('{base}').join(b);
   }
   // --- end sync block ---
 
@@ -202,6 +332,49 @@
     'filterFhirResourcesStrict no match',
     filterFhirResourcesStrict(mockFhir, 'nomatchxyz123').length === 0
   );
+
+  var tokEv = getOperationTokenAtCaret('/Patient/123/$ev', 16);
+  assert(
+    'getOperationTokenAtCaret /Patient/123/$ev caret 16',
+    tokEv && tokEv.start === 13 && tokEv.end === 16 && tokEv.query === 'ev'
+  );
+
+  assert(
+    'findResourceBeforeIndex path-only before $',
+    findResourceBeforeIndex('/Patient/123/$', ['Patient', 'Observation'], [], 13) === 'Patient'
+  );
+
+  assert(
+    'findResourceBeforeIndex absolute URL before $',
+    findResourceBeforeIndex('http://localhost:8000/Patient/$', ['Patient'], ['http://localhost:8000'], 30) === 'Patient'
+  );
+
+  var opMapDemo = new Map();
+  opMapDemo.set('', ['$meta']);
+  opMapDemo.set('Patient', ['$validate', '$everything']);
+  var filteredOps = filterOperationsForContext(opMapDemo, 'Patient', 'va');
+  assert(
+    'filterOperationsForContext Patient va',
+    filteredOps.length === 1 && filteredOps[0] === '$validate'
+  );
+
+  var normArr = normalizeOperationOptions(['$diff', '$everything', '$validate']);
+  var normList = normArr.get('');
+  assert(
+    'normalizeOperationOptions flat array uses system prefix',
+    normList &&
+      normList.length === 3 &&
+      normList[0] === '$diff' &&
+      normList[1] === '$everything' &&
+      normList[2] === '$validate'
+  );
+
+  assert(
+    'substituteBaseToken joins path',
+    substituteBaseToken('{base}/Patient', 'http://localhost:8000/') === 'http://localhost:8000/Patient'
+  );
+  assert('substituteBaseToken no token unchanged', substituteBaseToken('no token', 'http://x') === 'no token');
+  assert('substituteBaseToken empty base leaves token', substituteBaseToken('{base}', '') === '{base}');
 
   results.textContent = lines.join('\n');
   results.className = failed ? 'fail' : 'pass';

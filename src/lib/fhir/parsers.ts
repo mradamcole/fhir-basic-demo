@@ -1,6 +1,7 @@
 import type {
   Bundle,
-  CapabilityOperationSummary,
+  CapabilityOperationCell,
+  CapabilityOperationRow,
   CapabilityResourceSummary,
   CapabilityStatement,
   FhirResource,
@@ -62,20 +63,30 @@ export function getCapabilityResourceSummaries(cs?: CapabilityStatement): Capabi
     .sort((a, b) => a.type.localeCompare(b.type));
 }
 
-export function getCapabilityOperationSummaries(cs?: CapabilityStatement): CapabilityOperationSummary[] {
-  const operations = new Map<string, CapabilityOperationSummary>();
+export function getCapabilityOperationRows(cs?: CapabilityStatement): CapabilityOperationRow[] {
+  const byPrefix = new Map<string, Map<string, CapabilityOperationCell>>();
+
+  function namesForPrefix(prefix: string): Map<string, CapabilityOperationCell> {
+    let m = byPrefix.get(prefix);
+    if (!m) {
+      m = new Map();
+      byPrefix.set(prefix, m);
+    }
+    return m;
+  }
+
+  function addOperation(prefix: string, name: string, definition: string | undefined) {
+    const names = namesForPrefix(prefix);
+    if (names.has(name)) return;
+    const def = trimOptional(definition);
+    names.set(name, def ? [name, def] : [name]);
+  }
 
   for (const rest of cs?.rest ?? []) {
     for (const operation of rest.operation ?? []) {
       const parsed = parseOperationParts(operation.name, undefined);
       if (!parsed) continue;
-      const summary: CapabilityOperationSummary = {
-        prefix: parsed.prefix,
-        name: parsed.name,
-        definition: trimOptional(operation.definition)
-      };
-      const key = operationDedupeKey(summary);
-      if (!operations.has(key)) operations.set(key, summary);
+      addOperation(parsed.prefix, parsed.name, trimOptional(operation.definition));
     }
 
     for (const resource of rest.resource ?? []) {
@@ -83,18 +94,17 @@ export function getCapabilityOperationSummaries(cs?: CapabilityStatement): Capab
       for (const operation of resource.operation ?? []) {
         const parsed = parseOperationParts(operation.name, resourceType);
         if (!parsed) continue;
-        const summary: CapabilityOperationSummary = {
-          prefix: parsed.prefix,
-          name: parsed.name,
-          definition: trimOptional(operation.definition)
-        };
-        const key = operationDedupeKey(summary);
-        if (!operations.has(key)) operations.set(key, summary);
+        addOperation(parsed.prefix, parsed.name, trimOptional(operation.definition));
       }
     }
   }
 
-  return Array.from(operations.values()).sort(compareOperations);
+  const prefixes = Array.from(byPrefix.keys()).sort(comparePrefix);
+  return prefixes.map((prefix) => {
+    const cells = byPrefix.get(prefix)!;
+    const sortedCells = Array.from(cells.values()).sort((a, b) => a[0].localeCompare(b[0]));
+    return [prefix, ...sortedCells] as CapabilityOperationRow;
+  });
 }
 
 export function hasValidationErrors(outcome: OperationOutcome): boolean {
@@ -140,12 +150,8 @@ function parseOperationParts(value: string | undefined, resourceType: string | u
   return { prefix, name };
 }
 
-function operationDedupeKey(summary: CapabilityOperationSummary): string {
-  return `${summary.prefix}\0${summary.name}`;
-}
-
-function compareOperations(a: CapabilityOperationSummary, b: CapabilityOperationSummary): number {
-  const byName = a.name.localeCompare(b.name);
-  if (byName !== 0) return byName;
-  return a.prefix.localeCompare(b.prefix);
+function comparePrefix(a: string, b: string): number {
+  if (a === '' && b !== '') return -1;
+  if (b === '' && a !== '') return 1;
+  return a.localeCompare(b);
 }

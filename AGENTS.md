@@ -14,7 +14,6 @@ This repo is a **browser-only FHIR test console** (Vite + React). It supports de
 |-----|---------|---------------------|
 | `health` | `/endpoint-health` | Dashboard — FHIR Endpoint Check card |
 | `metadata` | `/metadata` | Dashboard — FHIR Endpoint Check card |
-| `validateOperation` | `$validate` | Dashboard — CRUDS Tester (Validate op field) |
 | `implementationGuide` | `/ImplementationGuide` | Implementation Guides — page header |
 | `structureDefinition` | `/StructureDefinition` | Implementation Guides — page header |
 

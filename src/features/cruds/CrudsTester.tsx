@@ -1,11 +1,11 @@
-import { Copy, Eraser, Play } from 'lucide-react';
+import { Eraser, Play } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../app/store';
 import { fhirRequest } from '../../lib/fhir/client';
 import { demoFhirRequest } from '../../lib/fhir/demoClient';
-import { getCapabilityResources, hasValidationErrors, isBundle, isOperationOutcome, parseMaybeJson } from '../../lib/fhir/parsers';
+import { getCapabilityResources, isBundle, parseMaybeJson } from '../../lib/fhir/parsers';
 import type { CrudsOperation, FhirResponse, RequestRecord, UiError } from '../../lib/fhir/types';
-import { buildFhirRequest, validateSearchQuery, type ValidateMode } from './buildFhirRequest';
+import { buildFhirRequest } from './buildFhirRequest';
 import { buildSearchDisplayUrl, lastResourcePathSegment, parseSearchUrlParts } from './searchUrlSync';
 import { VerbUrlFieldControl } from './VerbUrlFieldControl';
 import { JsonResponsePanel } from './JsonResponsePanel';
@@ -38,7 +38,6 @@ export function CrudsTester() {
   const endpoint = useAppStore((state) => state.endpoint);
   const fhirResources = useAppStore((state) => state.endpoint.fhirResources);
   const endpointPaths = useAppStore((state) => state.endpointPaths);
-  const setEndpointPath = useAppStore((state) => state.setEndpointPath);
   const activeOp = useAppStore((state) => state.activeOp);
   const setActiveOp = useAppStore((state) => state.setActiveOp);
   const selectedResourceType = useAppStore((state) => state.selectedResourceType);
@@ -53,13 +52,7 @@ export function CrudsTester() {
   const [query, setQuery] = useState('_count=10');
   const [searchPathAfterBase, setSearchPathAfterBase] = useState(selectedResourceType);
   const [body, setBody] = useState(defaultBody);
-  const [validateMode, setValidateMode] = useState<ValidateMode>('none');
-  const [validateOpDraft, setValidateOpDraft] = useState(endpointPaths.validateOperation);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setValidateOpDraft(endpointPaths.validateOperation);
-  }, [endpointPaths.validateOperation]);
 
   const prevOpRef = useRef<CrudsOperation>(activeOp);
   useEffect(() => {
@@ -74,12 +67,16 @@ export function CrudsTester() {
   }, [activeOp, selectedResourceType, searchPathAfterBase, setSelectedResourceType]);
 
   const capabilities = useMemo(() => getCapabilityResources(endpoint.capabilityStatement), [endpoint.capabilityStatement]);
-  const capabilityResourceName =
-    activeOp === 'search' ? lastResourcePathSegment(searchPathAfterBase) ?? selectedResourceType : selectedResourceType;
-  const selectedCapability = capabilities.find((capability) => capability.type === capabilityResourceName);
   const resourceTypes = capabilities.length ? capabilities.map((capability) => capability.type) : ['Patient', 'Observation', 'Encounter', 'ImplementationGuide'];
   const searchResourceOptions = fhirResources?.length ? fhirResources.map((resource) => resource.type) : resourceTypes;
-  const knownSearchParams = selectedCapability?.searchParams;
+  const operationOptions = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const row of endpoint.fhirOperations ?? []) {
+      const [prefix, ...cells] = row;
+      map[prefix] = cells.map((cell) => cell[0]);
+    }
+    return map;
+  }, [endpoint.fhirOperations]);
 
   const searchVerbUrlBases = useMemo(() => {
     const b = connection.baseUrl?.trim();
@@ -95,26 +92,8 @@ export function CrudsTester() {
     [connection.baseUrl, searchPathAfterBase, query]
   );
 
-  const currentUrl = useMemo(() => {
-    try {
-      return buildFhirRequest({
-        op: activeOp,
-        baseUrl: connection.baseUrl,
-        resourceType: selectedResourceType,
-        resourceId,
-        query,
-        body,
-        validateMode: 'none',
-        validateOperation: endpointPaths.validateOperation,
-        searchPath: activeOp === 'search' ? searchPathAfterBase : undefined
-      }).url;
-    } catch {
-      return 'Invalid request inputs';
-    }
-  }, [activeOp, body, connection.baseUrl, endpointPaths.validateOperation, query, resourceId, searchPathAfterBase, selectedResourceType]);
-
-  const executeRequest = async (requestMode: ValidateMode = validateMode) => {
-    if (activeOp === 'delete' && requestMode !== 'read-before-delete' && !window.confirm(`Delete ${selectedResourceType}/${resourceId}? This demo will record the request.`)) {
+  const executeRequest = async () => {
+    if (activeOp === 'delete' && !window.confirm(`Delete ${selectedResourceType}/${resourceId}? This demo will record the request.`)) {
       return;
     }
 
@@ -127,11 +106,6 @@ export function CrudsTester() {
         if (parsed.resourceType !== selectedResourceType) throw new Error(`Request body resourceType is ${parsed.resourceType ?? 'missing'}, but selected type is ${selectedResourceType}.`);
         if (activeOp === 'update' && parsed.id && parsed.id !== resourceId) throw new Error(`Request body id "${parsed.id}" must match URL id "${resourceId}".`);
       }
-      if (requestMode === 'validate-search-params') {
-        const warnings = validateSearchQuery(query, knownSearchParams);
-        showToast(warnings.length ? warnings.join(' ') : 'Search parameters look valid.');
-        return;
-      }
       built = buildFhirRequest({
         op: activeOp,
         baseUrl: connection.baseUrl,
@@ -140,7 +114,7 @@ export function CrudsTester() {
         query,
         body,
         auth: connection,
-        validateMode: requestMode,
+        validateMode: 'none',
         validateOperation: endpointPaths.validateOperation,
         searchPath: activeOp === 'search' ? searchPathAfterBase : undefined
       });
@@ -155,14 +129,6 @@ export function CrudsTester() {
         timestamp: new Date().toISOString()
       });
       if (isBundle(parsed.value)) setLastBundle(parsed.value);
-
-      if (requestMode === 'validate-before' && isOperationOutcome(parsed.value)) {
-        if (hasValidationErrors(parsed.value)) {
-          showToast('Validation found blocking errors. Create/update was not executed.');
-          return;
-        }
-        showToast('Validation passed. Run the action again with validation disabled to commit the change.');
-      }
     } catch (error) {
       const uiError = error as UiError | Error;
       const message = 'message' in uiError ? uiError.message : 'Request failed.';
@@ -204,7 +170,7 @@ export function CrudsTester() {
   };
 
   return (
-    <section className="card" aria-labelledby="cruds-title">
+    <section className="card cruds-card" aria-labelledby="cruds-title">
       <div className="card-header" style={{ alignItems: 'flex-end', paddingBottom: 0 }}>
         <div className="card-title" id="cruds-title">
           CRUDS Tester
@@ -244,6 +210,7 @@ export function CrudsTester() {
                 value={searchDisplayUrl}
                 baseUrlOptions={searchVerbUrlBases}
                 resourceOptions={searchResourceOptions}
+                operationOptions={operationOptions}
                 placeholder="/Patient?_count=10&family=Smith"
                 inputId="cruds-search-url"
                 onChange={(v) => {
@@ -272,42 +239,6 @@ export function CrudsTester() {
           </div>
         )}
 
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
-          <label className="row" style={{ color: 'var(--slate)', fontSize: 13, fontWeight: 800 }}>
-            <input
-              type="checkbox"
-              checked={validateMode !== 'none'}
-              onChange={(event) => setValidateMode(event.target.checked ? defaultValidateMode(activeOp) : 'none')}
-            />
-            {validateLabel(activeOp)}
-          </label>
-          <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-            <label htmlFor="validateOp" style={{ color: 'var(--slate)', fontSize: 13, fontWeight: 700 }}>
-              Validate op
-            </label>
-            <input
-              id="validateOp"
-              className="input"
-              style={{ width: 120 }}
-              value={validateOpDraft}
-              onChange={(event) => setValidateOpDraft(event.target.value)}
-              onBlur={() => {
-                if (validateOpDraft !== endpointPaths.validateOperation) setEndpointPath('validateOperation', validateOpDraft);
-              }}
-              placeholder="$validate"
-              spellCheck={false}
-              aria-label="Validate operation segment"
-            />
-          </div>
-          <button className="btn ghost" type="button" onClick={() => navigator.clipboard.writeText(currentUrl).then(() => showToast('Copied request URL.'))}>
-            <Copy size={15} /> Copy URL
-          </button>
-        </div>
-
-        <div className="url-copy" style={{ marginBottom: 14 }}>
-          <code>{currentUrl}</code>
-        </div>
-
         <div className="response-grid cruds-response-grid">
           <JsonResponsePanel value={lastResponse} meta={lastResponseMeta} onCopy={(text) => navigator.clipboard.writeText(text).then(() => showToast('Copied response.'))} />
           <ResourceSummaryPanel value={lastResponse} />
@@ -316,21 +247,6 @@ export function CrudsTester() {
       </div>
     </section>
   );
-}
-
-function defaultValidateMode(op: CrudsOperation): ValidateMode {
-  if (op === 'create' || op === 'update') return 'validate-before';
-  if (op === 'read') return 'validate-returned';
-  if (op === 'delete') return 'read-before-delete';
-  return 'validate-search-params';
-}
-
-function validateLabel(op: CrudsOperation) {
-  if (op === 'create') return 'Validate before create';
-  if (op === 'update') return 'Validate before update';
-  if (op === 'read') return 'Validate returned resource';
-  if (op === 'delete') return 'Read before delete';
-  return 'Validate search params';
 }
 
 function makeRecord(method: string, url: string, status: RequestRecord['status'], ok: boolean, elapsedMs: number, correlationId: string, errorType?: RequestRecord['errorType']): RequestRecord {

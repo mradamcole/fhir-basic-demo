@@ -12,7 +12,7 @@ import type {
   UiError
 } from '../lib/fhir/types';
 import { normalizeEndpointPathSegment } from '../lib/fhir/endpointPaths';
-import { getCapabilityOperationSummaries, getCapabilityResourceSummaries } from '../lib/fhir/parsers';
+import { getCapabilityOperationRows, getCapabilityResourceSummaries } from '../lib/fhir/parsers';
 import { readJson, writeJson } from '../lib/storage/localStorage';
 import { DEFAULT_ENDPOINT_PATHS, STORAGE_KEYS, type StoredProfile } from '../lib/storage/schema';
 import { fixtureBaseUrl } from '../test/fixtures/fhir';
@@ -301,7 +301,7 @@ export const useAppStore = create<AppState>((set) => ({
   setCapability: (capabilityStatement, metadataLatencyMs) =>
     set((state) => {
       const fhirResources = getCapabilityResourceSummaries(capabilityStatement);
-      const fhirOperations = getCapabilityOperationSummaries(capabilityStatement);
+      const fhirOperations = getCapabilityOperationRows(capabilityStatement);
       if (import.meta.env.DEV) {
         console.log('[FHIR] fhirOperations (from CapabilityStatement)', fhirOperations);
       }

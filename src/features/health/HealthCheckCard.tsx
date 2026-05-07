@@ -21,7 +21,8 @@ export function HealthCheckCard() {
   );
   const uniqueOperationDisplayNames = useMemo(() => {
     if (!endpoint.fhirOperations?.length) return undefined;
-    return [...new Set(endpoint.fhirOperations.map((op) => op.name))].sort((a, b) => a.localeCompare(b));
+    const names = endpoint.fhirOperations.flatMap((row) => row.slice(1).map((cell) => cell[0]));
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
   }, [endpoint.fhirOperations]);
   const operationSummary = useMemo(
     () => formatMetadataList(uniqueOperationDisplayNames?.map((name) => formatOperation({ name })), endpoint.capabilityStatement != null),

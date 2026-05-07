@@ -4,6 +4,13 @@ export function joinBaseUrlPath(baseUrl: string, pathSegment: string): string {
   return `${base}${path}`;
 }
 
+/** Replace every literal `{base}` token (copy/open only). */
+export function substituteBaseToken(value: string, baseUrl: string): string {
+  if (!baseUrl) return value;
+  const b = String(baseUrl).replace(/\/+$/, '');
+  return String(value).split('{base}').join(b);
+}
+
 export function normalizeVerbUrlSlashes(value: string): string {
   return String(value).replace(/\\/g, '/');
 }
@@ -24,10 +31,123 @@ export function filterVerbUrlBases(bases: string[], tail: string): string[] {
   return filtered.length ? filtered : bases.slice();
 }
 
+function uniqueSortedStrings(arr: string[]): string[] {
+  const seen: Record<string, boolean> = {};
+  const out: string[] = [];
+  for (const s of arr) {
+    if (!s || seen[s]) continue;
+    seen[s] = true;
+    out.push(s);
+  }
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+/** Flat array → system-level (`''`); object → per-resource-type keys (including `''`). */
+export function normalizeOperationOptions(input: string[] | Record<string, string[]> | null | undefined): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (input == null) return map;
+  if (Array.isArray(input)) {
+    map.set('', uniqueSortedStrings(input.map(String).filter(Boolean)));
+    return map;
+  }
+  for (const k of Object.keys(input)) {
+    const arr = input[k];
+    if (!Array.isArray(arr)) continue;
+    map.set(k, uniqueSortedStrings(arr.map(String).filter(Boolean)));
+  }
+  return map;
+}
+
+export type OperationTokenRange = { start: number; end: number; query: string };
+
+export function getOperationTokenAtCaret(value: string, caretIndex: number): OperationTokenRange | null {
+  const v = normalizeVerbUrlSlashes(String(value));
+  const n = v.length;
+  let caret = caretIndex;
+  if (caret < 0) caret = 0;
+  if (caret > n) caret = n;
+  for (let j = 0; j < n; j++) {
+    if (v[j] !== '$') continue;
+    const prevOk = j === 0 || v[j - 1] === '/' || v[j - 1] === '?' || v[j - 1] === '#';
+    if (!prevOk) continue;
+    let end = n;
+    for (let k = j + 1; k < n; k++) {
+      if (v[k] === '/' || v[k] === '?' || v[k] === '#') {
+        end = k;
+        break;
+      }
+    }
+    if (caret >= j && caret <= end) {
+      const qEnd = Math.min(caret, end);
+      return { start: j, end, query: v.slice(j + 1, qEnd) };
+    }
+  }
+  return null;
+}
+
+export function findResourceBeforeIndex(value: string, knownResources: string[], baseUrlOptions: string[], dollarIndex: number): string | null {
+  const v = normalizeVerbUrlSlashes(String(value));
+  const before = v.slice(0, dollarIndex);
+  const qh = before.search(/[?#]/);
+  const mainBefore = qh >= 0 ? before.slice(0, qh) : before;
+  let pathLike = mainBefore;
+  if (/^https?:\/\//i.test(pathLike)) {
+    let matched = '';
+    for (const base of baseUrlOptions) {
+      const b = String(base).replace(/\/+$/, '');
+      if (!b) continue;
+      if (pathLike === b || pathLike.startsWith(`${b}/`)) {
+        matched = b;
+        break;
+      }
+    }
+    if (matched) {
+      pathLike = pathLike.slice(matched.length);
+      if (!pathLike.startsWith('/')) pathLike = `/${pathLike}`;
+    } else {
+      try {
+        const u = new URL(pathLike);
+        pathLike = u.pathname || '/';
+      } catch {
+        pathLike = pathLike.replace(/^https?:\/\/[^/]+/i, '') || '/';
+      }
+    }
+  }
+  if (!pathLike.startsWith('/')) pathLike = `/${pathLike}`;
+  const segs = pathLike.split('/').filter(Boolean);
+  const set = new Set(knownResources);
+  let last: string | null = null;
+  for (const seg of segs) {
+    if (set.has(seg)) last = seg;
+  }
+  return last;
+}
+
+export function filterOperationsForContext(opMap: Map<string, string[]>, resourceType: string | null, query: string): string[] {
+  const q = String(query || '').toLowerCase();
+  const seen: Record<string, boolean> = {};
+  const combined: string[] = [];
+  const addList = (arr: string[] | undefined) => {
+    if (!arr) return;
+    for (const op of arr) {
+      if (seen[op]) continue;
+      seen[op] = true;
+      combined.push(op);
+    }
+  };
+  addList(opMap.get(''));
+  if (resourceType) addList(opMap.get(resourceType));
+  combined.sort((a, b) => a.localeCompare(b));
+  if (!q) return combined;
+  return combined.filter((op) => String(op).toLowerCase().includes(q));
+}
+
 export type VerbUrlFieldMountOptions = {
   method?: string;
   baseUrlOptions?: string[];
   resourceOptions?: string[];
+  operationOptions?: string[] | Record<string, string[]>;
   value?: string;
   placeholder?: string;
   inputId?: string;
@@ -45,7 +165,7 @@ export type VerbUrlFieldApi = {
 };
 
 type VerbUrlSuggestion = {
-  kind: 'base' | 'resource';
+  kind: 'base' | 'resource' | 'operation';
   label: string;
   value: string;
 };
@@ -76,6 +196,7 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
   const method = (options.method || 'GET').toUpperCase();
   const baseUrlOptions = options.baseUrlOptions || [];
   const resourceOptions = uniqueStrings(options.resourceOptions || []);
+  const operationMap = normalizeOperationOptions(options.operationOptions);
   const value = options.value != null ? String(options.value) : '';
   const placeholder = options.placeholder || '';
   const onChange = options.onChange;
@@ -149,10 +270,12 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
   function resolveUrlForActions(): string {
     const v = getValue().trim();
     if (!v) return '';
-    if (isPathOnlyValue(v) && baseUrlOptions.length) {
-      return joinBaseUrlPath(baseUrlOptions[0], v);
+    let resolved =
+      isPathOnlyValue(v) && baseUrlOptions.length ? joinBaseUrlPath(baseUrlOptions[0], v) : v;
+    if (baseUrlOptions.length && resolved.includes('{base}')) {
+      resolved = substituteBaseToken(resolved, baseUrlOptions[0]);
     }
-    return v;
+    return resolved;
   }
 
   function updatePathOnlyUi(): void {
@@ -170,8 +293,16 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
     return v;
   }
 
+  function getCaret(): number {
+    try {
+      if (input.selectionStart != null) return input.selectionStart;
+    } catch {
+      /* ignore */
+    }
+    return input.value.length;
+  }
+
   function shouldShowMenu(): boolean {
-    if (!baseUrlOptions.length && !resourceOptions.length) return false;
     return getSuggestions().length > 0;
   }
 
@@ -194,6 +325,10 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
 
   function renderOptions(): void {
     const suggestions = getSuggestions();
+    if (!suggestions.length) {
+      closeMenu();
+      return;
+    }
     listbox.innerHTML = '';
     suggestions.forEach((suggestion, i) => {
       const li = document.createElement('li');
@@ -213,6 +348,21 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
   }
 
   function getSuggestions(): VerbUrlSuggestion[] {
+    const rawVal = normalizeVerbUrlSlashes(input.value);
+    const caret = getCaret();
+    if (operationMap.size) {
+      const tok = getOperationTokenAtCaret(rawVal, caret);
+      if (tok) {
+        const resType = findResourceBeforeIndex(rawVal, resourceOptions, baseUrlOptions, tok.start);
+        const ops = filterOperationsForContext(operationMap, resType, tok.query);
+        const tokenText = rawVal.slice(tok.start, tok.end);
+        const tokenComplete = caret >= tok.end && ops.some((op) => op === tokenText);
+        if (ops.length && !tokenComplete) {
+          return ops.map((op) => ({ kind: 'operation' as const, label: op, value: op }));
+        }
+      }
+    }
+
     const context = getPathSuggestionContext();
     if (!context) return [];
     const query = safeDecode(context.tail).toLowerCase();
@@ -311,12 +461,32 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
     input.focus();
   }
 
+  function selectOperation(opName: string): void {
+    const rawVal = normalizeVerbUrlSlashes(input.value);
+    const tok = getOperationTokenAtCaret(rawVal, getCaret());
+    if (!tok) return;
+    const nextVal = rawVal.slice(0, tok.start) + opName + rawVal.slice(tok.end);
+    input.value = nextVal;
+    const pos = tok.start + opName.length;
+    try {
+      input.setSelectionRange(pos, pos);
+    } catch {
+      /* ignore */
+    }
+    closeMenu();
+    wasEmpty = false;
+    onChange?.(nextVal);
+    updatePathOnlyUi();
+    input.focus();
+  }
+
   function selectSuggestion(option: HTMLElement | null): void {
     const kind = option?.dataset.kind;
     const value = option?.dataset.value;
     if (!kind || !value) return;
     if (kind === 'base') selectBase(value);
     else if (kind === 'resource') selectResource(value);
+    else if (kind === 'operation') selectOperation(value);
   }
 
   function tryOpenFromSlashTransition(prevEmpty: boolean, rawVal: string): void {
@@ -324,6 +494,15 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
     if (!prevEmpty || !rawVal || rawVal.length === 0) return;
     const first = rawVal[0];
     if (first === '/' || first === '\\') openMenu();
+  }
+
+  function syncMenuFromCaret(): void {
+    if (!shouldShowMenu()) {
+      closeMenu();
+      return;
+    }
+    if (!menuOpen) openMenu();
+    else renderOptions();
   }
 
   input.addEventListener('input', () => {
@@ -345,6 +524,9 @@ export function mountVerbUrlField(container: HTMLElement, options: VerbUrlFieldM
     onChange?.(norm);
     updatePathOnlyUi();
   });
+
+  input.addEventListener('keyup', syncMenuFromCaret);
+  input.addEventListener('click', syncMenuFromCaret);
 
   input.addEventListener('keydown', (e) => {
     if (!menuOpen || listbox.hidden) {

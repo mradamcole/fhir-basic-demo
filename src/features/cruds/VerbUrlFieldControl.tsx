@@ -7,6 +7,7 @@ export type VerbUrlFieldControlProps = {
   value: string;
   baseUrlOptions: string[];
   resourceOptions?: string[];
+  operationOptions?: string[] | Record<string, string[]>;
   placeholder?: string;
   labelledBy?: string;
   inputId?: string;
@@ -24,6 +25,7 @@ export function VerbUrlFieldControl({
   value,
   baseUrlOptions,
   resourceOptions,
+  operationOptions,
   placeholder,
   labelledBy,
   inputId,
@@ -47,6 +49,7 @@ export function VerbUrlFieldControl({
 
   const basesKey = baseUrlOptions.join('\n');
   const resourcesKey = (resourceOptions ?? []).join('\n');
+  const operationsKey = JSON.stringify(operationOptions ?? null);
 
   useEffect(() => {
     const el = hostRef.current;
@@ -58,6 +61,7 @@ export function VerbUrlFieldControl({
       method,
       baseUrlOptions,
       resourceOptions,
+      operationOptions,
       value: valueRef.current,
       placeholder,
       labelledBy,
@@ -74,7 +78,7 @@ export function VerbUrlFieldControl({
       apiRef.current?.destroy();
       apiRef.current = null;
     };
-  }, [remountKey, method, basesKey, resourcesKey, placeholder, labelledBy, inputId]);
+  }, [remountKey, method, basesKey, resourcesKey, operationsKey, placeholder, labelledBy, inputId]);
 
   useEffect(() => {
     const api = apiRef.current;

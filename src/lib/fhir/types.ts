@@ -37,7 +37,8 @@ export type EndpointState = {
   /** Metadata probe (e.g. GET /metadata) — CapabilityStatement summary */
   capabilityStatement?: CapabilityStatement;
   fhirResources?: CapabilityResourceSummary[];
-  fhirOperations?: CapabilityOperationSummary[];
+  /** Grouped rows: `[prefix, ...[name] | [name, definition]]` — `prefix` is `''` for system-level operations. */
+  fhirOperations?: CapabilityOperationRow[];
   metadataLatencyMs?: number;
   metadataLastCheckedAt?: string;
   metadataError?: UiError;
@@ -87,13 +88,11 @@ export type CapabilityResourceSummary = {
   searchParams: string[];
 };
 
-export type CapabilityOperationSummary = {
-  /** Scope before the operation (e.g. `Patient`); empty string for system-level operations. */
-  prefix: string;
-  /** Normalized operation token, always starting with `$` (e.g. `$validate`). */
-  name: string;
-  definition?: string;
-};
+/** One operation: `[name]` or `[name, definitionUrl]`. */
+export type CapabilityOperationCell = [string] | [string, string];
+
+/** `[prefix, operation1, operation2, ...]` */
+export type CapabilityOperationRow = [string, ...CapabilityOperationCell[]];
 
 export type CapabilityStatement = FhirResource & {
   resourceType: 'CapabilityStatement';

@@ -236,9 +236,9 @@ describe('app store profile management', () => {
       }
     ]);
     expect(useAppStore.getState().endpoint.fhirOperations).toEqual([
-      { prefix: '', name: '$meta' },
-      { prefix: 'Observation', name: '$validate' },
-      { prefix: 'Patient', name: '$validate' }
+      ['', ['$meta']],
+      ['Observation', ['$validate']],
+      ['Patient', ['$validate']]
     ]);
   });
 

@@ -231,7 +231,7 @@
   <div class="demo-wrap">
     <h1>URL control (standalone widget)</h1>
     <p>
-      With a configured base list, a path-only value (starts with <kbd>/</kbd>) shows the dark orange <strong>{base}</strong> label; copy and open resolve using the default base (first in the list) plus your path. On <kbd>/</kbd> or <kbd>/Pat</kbd> (only the first path segment, before a second <kbd>/</kbd>), an alphabetical FHIR R4 resource typeahead opens. Deeper paths such as <kbd>/Patient/123</kbd> do not use that list. For non-path values, type substrings of a configured base URL to open the base URL list. Single-click the copy icon for the resolved URL; double-click to open it in a new tab.
+      With a configured base list, a path-only value (starts with <kbd>/</kbd>) shows the dark orange <strong>{base}</strong> label; copy and open resolve using the default base (first in the list) plus your path. If you type the literal token <kbd>{base}</kbd> in the field (e.g. <kbd>{base}/Patient/123</kbd>), copy and open replace every <kbd>{base}</kbd> with that same default base URL. On <kbd>/</kbd> or <kbd>/Pat</kbd> (only the first path segment, before a second <kbd>/</kbd>), an alphabetical FHIR R4 resource typeahead opens. Deeper paths such as <kbd>/Patient/123</kbd> do not use that list. For non-path values, type substrings of a configured base URL to open the base URL list. When <kbd>data-url-control-operations</kbd> is set, typing <kbd>$</kbd> in the path opens an operation typeahead (resource-aware when using a JSON object map). Single-click the copy icon for the resolved URL; double-click to open it in a new tab.
     </p>
 
     <div class="demo-block">
@@ -259,6 +259,20 @@
         data-url-control-value="/Patient"
       ></div>
     </div>
+
+    <div class="demo-block">
+      <span class="demo-field-label" id="demo3-label">Example (operations typeahead)</span>
+      <div
+        class="url-control"
+        data-url-control-autoinit
+        aria-labelledby="demo3-label"
+        data-url-control-method="GET"
+        data-url-control-placeholder="/Patient/123/$validate"
+        data-url-control-bases='["http://localhost:8000","https://aio-demo.salessbx.smiledigitalhealth.com/provider-fhir/"]'
+        data-url-control-operations='["$diff","$everything","$validate"]'
+        data-url-control-value=""
+      ></div>
+    </div>
   </div>
 
   <script>
@@ -270,6 +284,13 @@
     var base = baseUrl.replace(/\/+$/, '');
     var path = pathSegment.startsWith('/') ? pathSegment : '/' + pathSegment;
     return base + path;
+  }
+
+  /** @param {string} value @param {string} baseUrl */
+  function substituteBaseToken(value, baseUrl) {
+    if (!baseUrl) return String(value);
+    var b = String(baseUrl).replace(/\/+$/, '');
+    return String(value).split('{base}').join(b);
   }
 
   function parseBasesJson(raw) {
@@ -362,6 +383,161 @@
     });
   }
 
+  function parseOperationsJson(raw) {
+    if (raw == null || raw === '') return null;
+    try {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (eOp) {
+      /* ignore */
+    }
+    return null;
+  }
+
+  function uniqueSortedStrings(arr) {
+    var seen = {};
+    var out = [];
+    for (var ui = 0; ui < arr.length; ui++) {
+      var s = arr[ui];
+      if (!s || seen[s]) continue;
+      seen[s] = true;
+      out.push(s);
+    }
+    out.sort(function (a, b) {
+      return a.localeCompare(b);
+    });
+    return out;
+  }
+
+  /**
+   * @param {string[]|Record<string,string[]>|null|undefined} input
+   * @returns {Map<string,string[]>}
+   */
+  function normalizeOperationOptions(input) {
+    var map = new Map();
+    if (input == null) return map;
+    if (Array.isArray(input)) {
+      map.set('', uniqueSortedStrings(input.map(String).filter(Boolean)));
+      return map;
+    }
+    if (typeof input === 'object') {
+      Object.keys(input).forEach(function (k) {
+        var arr = input[k];
+        if (!Array.isArray(arr)) return;
+        map.set(k, uniqueSortedStrings(arr.map(String).filter(Boolean)));
+      });
+      return map;
+    }
+    return map;
+  }
+
+  /**
+   * @param {string} value
+   * @param {number} caretIndex
+   * @returns {{ start: number, end: number, query: string } | null}
+   */
+  function getOperationTokenAtCaret(value, caretIndex) {
+    var v = normalizeSlashes(String(value));
+    var n = v.length;
+    var caret = typeof caretIndex === 'number' ? caretIndex : 0;
+    if (caret < 0) caret = 0;
+    if (caret > n) caret = n;
+    for (var j = 0; j < n; j++) {
+      if (v[j] !== '$') continue;
+      var prevOk = j === 0 || v[j - 1] === '/' || v[j - 1] === '?' || v[j - 1] === '#';
+      if (!prevOk) continue;
+      var end = n;
+      for (var k = j + 1; k < n; k++) {
+        if (v[k] === '/' || v[k] === '?' || v[k] === '#') {
+          end = k;
+          break;
+        }
+      }
+      if (caret >= j && caret <= end) {
+        var qEnd = Math.min(caret, end);
+        return { start: j, end: end, query: v.slice(j + 1, qEnd) };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} value
+   * @param {string[]} knownResources
+   * @param {string[]} baseUrlOptions
+   * @param {number} dollarIndex index of `$` starting the operation token
+   * @returns {string | null}
+   */
+  function findResourceBeforeIndex(value, knownResources, baseUrlOptions, dollarIndex) {
+    var v = normalizeSlashes(String(value));
+    var before = v.slice(0, dollarIndex);
+    var qh = before.search(/[?#]/);
+    if (qh >= 0) before = before.slice(0, qh);
+    var pathLike = before;
+    if (/^https?:\/\//i.test(pathLike)) {
+      var matched = '';
+      for (var bi = 0; bi < baseUrlOptions.length; bi++) {
+        var b = String(baseUrlOptions[bi]).replace(/\/+$/, '');
+        if (!b) continue;
+        if (pathLike === b || pathLike.startsWith(b + '/')) {
+          matched = b;
+          break;
+        }
+      }
+      if (matched) {
+        pathLike = pathLike.slice(matched.length);
+        if (!pathLike.startsWith('/')) pathLike = '/' + pathLike;
+      } else {
+        try {
+          var u = new URL(pathLike);
+          pathLike = u.pathname || '/';
+        } catch (eUrl) {
+          pathLike = pathLike.replace(/^https?:\/\/[^/]+/i, '') || '/';
+        }
+      }
+    }
+    if (!pathLike.startsWith('/')) pathLike = '/' + pathLike;
+    var segs = pathLike.split('/').filter(Boolean);
+    var set = {};
+    for (var rj = 0; rj < knownResources.length; rj++) set[knownResources[rj]] = true;
+    var last = null;
+    for (var sk = 0; sk < segs.length; sk++) {
+      if (set[segs[sk]]) last = segs[sk];
+    }
+    return last;
+  }
+
+  /**
+   * @param {Map<string,string[]>} opMap
+   * @param {string | null} resourceType
+   * @param {string} query substring after `$` (may be empty)
+   */
+  function filterOperationsForContext(opMap, resourceType, query) {
+    var q = String(query || '').toLowerCase();
+    var seen = {};
+    var combined = [];
+    function addList(arr) {
+      if (!arr) return;
+      for (var ai = 0; ai < arr.length; ai++) {
+        var op = String(arr[ai]);
+        if (!seen[op]) {
+          seen[op] = true;
+          combined.push(op);
+        }
+      }
+    }
+    addList(opMap.get(''));
+    if (resourceType) addList(opMap.get(resourceType));
+    combined.sort(function (a, b) {
+      return a.localeCompare(b);
+    });
+    if (!q) return combined;
+    return combined.filter(function (op) {
+      return String(op).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
   var COPY_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
   var CHECK_SVG =
@@ -392,6 +568,7 @@
     var onCopy = typeof options.onCopy === 'function' ? options.onCopy : null;
     var onOpen = typeof options.onOpen === 'function' ? options.onOpen : null;
     var labelledBy = options.labelledBy || container.getAttribute('aria-labelledby') || '';
+    var operationMap = normalizeOperationOptions(options.operationOptions);
 
     container.innerHTML = '';
     container.classList.add('url-control');
@@ -451,9 +628,32 @@
     var checkmarkTimer = null;
     var blurCloseTimer = null;
 
+    function getCaret() {
+      try {
+        if (input.selectionStart != null) return input.selectionStart;
+      } catch (eCaret) {
+        /* ignore */
+      }
+      return input.value.length;
+    }
+
     function getCurrentMenuKind() {
+      var rawVal = normalizeSlashes(input.value);
+      var caret = getCaret();
+      if (operationMap.size) {
+        var opTok = getOperationTokenAtCaret(rawVal, caret);
+        if (opTok) {
+          var resType = findResourceBeforeIndex(rawVal, FHIR_R4_RESOURCE_TYPES, baseUrlOptions, opTok.start);
+          var opItems = filterOperationsForContext(operationMap, resType, opTok.query);
+          var tokenText = rawVal.slice(opTok.start, opTok.end);
+          var tokenComplete = caret >= opTok.end && opItems.some(function (op) {
+            return op === tokenText;
+          });
+          if (opItems.length && !tokenComplete) return 'op';
+        }
+      }
       if (!baseUrlOptions.length) return null;
-      var v = normalizeSlashes(input.value).trim();
+      var v = rawVal.trim();
       if (isPathOnly(v) && isPathOnlyFirstSegment(v)) {
         var seg = getFirstPathSegment(v);
         if (filterFhirResourcesStrict(FHIR_R4_RESOURCE_TYPES, seg).length > 0) return 'fhir';
@@ -467,10 +667,12 @@
     function resolveUrlForActions() {
       var v = getValue().trim();
       if (!v) return '';
-      if (isPathOnly(v) && baseUrlOptions.length) {
-        return joinBaseUrlPath(baseUrlOptions[0], v);
+      var resolved =
+        isPathOnly(v) && baseUrlOptions.length ? joinBaseUrlPath(baseUrlOptions[0], v) : v;
+      if (baseUrlOptions.length && resolved.indexOf('{base}') !== -1) {
+        resolved = substituteBaseToken(resolved, baseUrlOptions[0]);
       }
-      return v;
+      return resolved;
     }
 
     function updatePathOnlyUi() {
@@ -519,7 +721,24 @@
       }
       var v = normalizeSlashes(input.value);
       var items;
-      if (menuMode === 'fhir') {
+      if (menuMode === 'op') {
+        var tok = getOperationTokenAtCaret(v, getCaret());
+        if (!tok) {
+          closeMenu();
+          return;
+        }
+        var rType = findResourceBeforeIndex(v, FHIR_R4_RESOURCE_TYPES, baseUrlOptions, tok.start);
+        items = filterOperationsForContext(operationMap, rType, tok.query);
+        var tComplete =
+          getCaret() >= tok.end &&
+          items.some(function (op) {
+            return op === v.slice(tok.start, tok.end);
+          });
+        if (tComplete || !items.length) {
+          closeMenu();
+          return;
+        }
+      } else if (menuMode === 'fhir') {
         items = filterFhirResourcesStrict(FHIR_R4_RESOURCE_TYPES, getFirstPathSegment(v));
       } else {
         items = filterBasesStrict(baseUrlOptions, getMenuTypeaheadQuery(v));
@@ -531,7 +750,8 @@
         li.setAttribute('role', 'option');
         li.id = menuId + '-opt-' + i;
         li.textContent = row;
-        if (menuMode === 'fhir') li.dataset.resourceType = row;
+        if (menuMode === 'op') li.dataset.operation = row;
+        else if (menuMode === 'fhir') li.dataset.resourceType = row;
         else li.dataset.base = row;
         if (i === activeIndex) li.setAttribute('aria-selected', 'true');
         else li.setAttribute('aria-selected', 'false');
@@ -579,9 +799,28 @@
       input.focus();
     }
 
+    function selectOperation(opName) {
+      var rawVal = normalizeSlashes(input.value);
+      var tok = getOperationTokenAtCaret(rawVal, getCaret());
+      if (!tok) return;
+      var nextVal = rawVal.slice(0, tok.start) + opName + rawVal.slice(tok.end);
+      input.value = nextVal;
+      var pos = tok.start + String(opName).length;
+      try {
+        input.setSelectionRange(pos, pos);
+      } catch (eSr) {
+        /* ignore */
+      }
+      closeMenu();
+      if (onChange) onChange(nextVal);
+      updatePathOnlyUi();
+      input.focus();
+    }
+
     function pickListOption(opt) {
       if (!opt) return;
-      if (opt.dataset.resourceType) selectFhirResource(opt.dataset.resourceType);
+      if (opt.dataset.operation) selectOperation(opt.dataset.operation);
+      else if (opt.dataset.resourceType) selectFhirResource(opt.dataset.resourceType);
       else if (opt.dataset.base) selectBase(opt.dataset.base);
     }
 
@@ -594,6 +833,10 @@
       }
     }
 
+    function onInputOrCaretMove() {
+      syncMenuFromInput();
+    }
+
     input.addEventListener('input', function () {
       var raw = input.value;
       var norm = normalizeSlashes(raw);
@@ -604,6 +847,9 @@
       if (onChange) onChange(norm);
       updatePathOnlyUi();
     });
+
+    input.addEventListener('keyup', onInputOrCaretMove);
+    input.addEventListener('click', onInputOrCaretMove);
 
     input.addEventListener('keydown', function (e) {
       if (!menuOpen || listbox.hidden) {
@@ -749,27 +995,36 @@
       el.setAttribute('data-url-control-ready', '1');
       var method = el.getAttribute('data-url-control-method') || 'GET';
       var bases = parseBasesJson(el.getAttribute('data-url-control-bases'));
+      var opRaw = parseOperationsJson(el.getAttribute('data-url-control-operations'));
       var val = el.getAttribute('data-url-control-value') || '';
       var ph = el.getAttribute('data-url-control-placeholder') || '';
-      var api = mount(el, {
+      var mountOpts = {
         method: method,
         baseUrlOptions: bases,
         value: val,
         placeholder: ph,
         labelledBy: el.getAttribute('aria-labelledby') || ''
-      });
+      };
+      if (opRaw != null) mountOpts.operationOptions = opRaw;
+      var api = mount(el, mountOpts);
       el.urlControlApi = api;
     });
   }
 
   global.urlControl = {
     joinBaseUrlPath: joinBaseUrlPath,
+    substituteBaseToken: substituteBaseToken,
     filterBases: filterBases,
     filterBasesStrict: filterBasesStrict,
     FHIR_R4_RESOURCE_TYPES: FHIR_R4_RESOURCE_TYPES,
     isPathOnlyFirstSegment: isPathOnlyFirstSegment,
     getFirstPathSegment: getFirstPathSegment,
     filterFhirResourcesStrict: filterFhirResourcesStrict,
+    parseOperationsJson: parseOperationsJson,
+    normalizeOperationOptions: normalizeOperationOptions,
+    getOperationTokenAtCaret: getOperationTokenAtCaret,
+    findResourceBeforeIndex: findResourceBeforeIndex,
+    filterOperationsForContext: filterOperationsForContext,
     mount: mount,
     autoInit: autoInit
   };
