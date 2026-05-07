@@ -15,6 +15,11 @@ export type BuildFhirRequestInput = {
   validateMode?: ValidateMode;
   /** Operation segment for validate (default `$validate`, no leading slash). */
   validateOperation?: string;
+  /**
+   * For `search` only: path after the service base (e.g. `Patient` or `Patient/123/Observation`).
+   * When omitted, `resourceType` is used as a single path segment (encoded).
+   */
+  searchPath?: string;
 };
 
 export type BuiltFhirRequest = {
@@ -24,9 +29,25 @@ export type BuiltFhirRequest = {
   body?: string;
 };
 
+function encodeSearchPath(resourceType: string, searchPath?: string): string {
+  const raw = (searchPath ?? resourceType).trim().replace(/^\/+/, '');
+  if (!raw) return encodeURIComponent(resourceType);
+  return raw
+    .split('/')
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return encodeURIComponent(decodeURIComponent(s));
+      } catch {
+        return encodeURIComponent(s);
+      }
+    })
+    .join('/');
+}
+
 export function buildFhirRequest(input: BuildFhirRequestInput): BuiltFhirRequest {
   const base = normalizeBaseUrl(input.baseUrl);
-  const type = encodeURIComponent(input.resourceType);
+  const type = encodeSearchPath(input.resourceType, input.searchPath);
   const validateOpRaw = (input.validateOperation ?? '$validate').trim().replace(/^\//, '');
   const validateOp = validateOpRaw || '$validate';
   const headers = {

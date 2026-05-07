@@ -541,6 +541,8 @@ textarea {
 
 .kv {
   display: grid;
+  height: 200px;
+  overflow-y: auto;
 }
 
 .kv-row {
@@ -744,6 +746,11 @@ textarea {
 
 .cruds-controls.instance {
   grid-template-columns: 170px 220px minmax(0, 1fr) auto auto;
+}
+
+/* Search tab: only URL field + run button — avoid placing the button in the 1fr column. */
+.cruds-controls.cruds-controls-search {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .url-copy {
@@ -1026,7 +1033,8 @@ th {
   .ig-layout,
   .form-grid,
   .cruds-controls,
-  .cruds-controls.instance {
+  .cruds-controls.instance,
+  .cruds-controls.cruds-controls-search {
     grid-template-columns: minmax(0, 1fr);
   }
 }

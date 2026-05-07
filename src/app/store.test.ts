@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { ConnectionConfig } from '../lib/fhir/types';
+import type { CapabilityStatement, ConnectionConfig } from '../lib/fhir/types';
 import { STORAGE_KEYS } from '../lib/storage/schema';
 
 async function loadStore() {
@@ -205,5 +205,57 @@ describe('app store profile management', () => {
 
     expect(useAppStore.getState().currentProfileId).toBe(secondary!.id);
     expect(useAppStore.getState().connection.baseUrl).toBe('https://two.example.com/fhir');
+  });
+
+  it('populates CapabilityStatement resource and operation summaries', async () => {
+    const useAppStore = await loadStore();
+    const capabilityStatement: CapabilityStatement = {
+      resourceType: 'CapabilityStatement',
+      rest: [
+        {
+          operation: [{ name: 'meta' }],
+          resource: [
+            {
+              type: 'Patient',
+              interaction: [{ code: 'read' }],
+              operation: [{ name: 'Patient/$validate' }, { name: 'Observation/$validate' }],
+              searchParam: [{ name: 'family' }]
+            }
+          ]
+        }
+      ]
+    };
+
+    useAppStore.getState().setCapability(capabilityStatement, 25);
+
+    expect(useAppStore.getState().endpoint.fhirResources).toEqual([
+      {
+        type: 'Patient',
+        interactions: ['read'],
+        searchParams: ['family']
+      }
+    ]);
+    expect(useAppStore.getState().endpoint.fhirOperations).toEqual([
+      { prefix: '', name: '$meta' },
+      { prefix: 'Observation', name: '$validate' },
+      { prefix: 'Patient', name: '$validate' }
+    ]);
+  });
+
+  it('clears stale CapabilityStatement summaries on metadata failure', async () => {
+    const useAppStore = await loadStore();
+    useAppStore.getState().setCapability(
+      {
+        resourceType: 'CapabilityStatement',
+        rest: [{ operation: [{ name: 'meta' }], resource: [{ type: 'Patient' }] }]
+      },
+      25
+    );
+
+    useAppStore.getState().setMetadataProbeFailure({ kind: 'parse_error', message: 'Invalid metadata.' }, 10);
+
+    expect(useAppStore.getState().endpoint.capabilityStatement).toBeUndefined();
+    expect(useAppStore.getState().endpoint.fhirResources).toEqual([]);
+    expect(useAppStore.getState().endpoint.fhirOperations).toEqual([]);
   });
 });

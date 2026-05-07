@@ -1,11 +1,13 @@
 import { Copy, Eraser, Play } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../app/store';
 import { fhirRequest } from '../../lib/fhir/client';
 import { demoFhirRequest } from '../../lib/fhir/demoClient';
 import { getCapabilityResources, hasValidationErrors, isBundle, isOperationOutcome, parseMaybeJson } from '../../lib/fhir/parsers';
 import type { CrudsOperation, FhirResponse, RequestRecord, UiError } from '../../lib/fhir/types';
 import { buildFhirRequest, validateSearchQuery, type ValidateMode } from './buildFhirRequest';
+import { buildSearchDisplayUrl, lastResourcePathSegment, parseSearchUrlParts } from './searchUrlSync';
+import { VerbUrlFieldControl } from './VerbUrlFieldControl';
 import { JsonResponsePanel } from './JsonResponsePanel';
 import { ResourceSummaryPanel } from './ResourceSummaryPanel';
 import { SearchResultsTable } from './SearchResultsTable';
@@ -34,6 +36,7 @@ const defaultBody = `{
 export function CrudsTester() {
   const connection = useAppStore((state) => state.connection);
   const endpoint = useAppStore((state) => state.endpoint);
+  const fhirResources = useAppStore((state) => state.endpoint.fhirResources);
   const endpointPaths = useAppStore((state) => state.endpointPaths);
   const setEndpointPath = useAppStore((state) => state.setEndpointPath);
   const activeOp = useAppStore((state) => state.activeOp);
@@ -48,6 +51,7 @@ export function CrudsTester() {
   const showToast = useAppStore((state) => state.showToast);
   const [resourceId, setResourceId] = useState('123');
   const [query, setQuery] = useState('_count=10');
+  const [searchPathAfterBase, setSearchPathAfterBase] = useState(selectedResourceType);
   const [body, setBody] = useState(defaultBody);
   const [validateMode, setValidateMode] = useState<ValidateMode>('none');
   const [validateOpDraft, setValidateOpDraft] = useState(endpointPaths.validateOperation);
@@ -57,10 +61,39 @@ export function CrudsTester() {
     setValidateOpDraft(endpointPaths.validateOperation);
   }, [endpointPaths.validateOperation]);
 
+  const prevOpRef = useRef<CrudsOperation>(activeOp);
+  useEffect(() => {
+    const prev = prevOpRef.current;
+    if (activeOp === 'search' && prev !== 'search') {
+      setSearchPathAfterBase(selectedResourceType);
+    } else if (activeOp !== 'search' && prev === 'search') {
+      const tail = lastResourcePathSegment(searchPathAfterBase);
+      if (tail) setSelectedResourceType(tail);
+    }
+    prevOpRef.current = activeOp;
+  }, [activeOp, selectedResourceType, searchPathAfterBase, setSelectedResourceType]);
+
   const capabilities = useMemo(() => getCapabilityResources(endpoint.capabilityStatement), [endpoint.capabilityStatement]);
-  const selectedCapability = capabilities.find((capability) => capability.type === selectedResourceType);
+  const capabilityResourceName =
+    activeOp === 'search' ? lastResourcePathSegment(searchPathAfterBase) ?? selectedResourceType : selectedResourceType;
+  const selectedCapability = capabilities.find((capability) => capability.type === capabilityResourceName);
   const resourceTypes = capabilities.length ? capabilities.map((capability) => capability.type) : ['Patient', 'Observation', 'Encounter', 'ImplementationGuide'];
+  const searchResourceOptions = fhirResources?.length ? fhirResources.map((resource) => resource.type) : resourceTypes;
   const knownSearchParams = selectedCapability?.searchParams;
+
+  const searchVerbUrlBases = useMemo(() => {
+    const b = connection.baseUrl?.trim();
+    return b ? [b] : [];
+  }, [connection.baseUrl]);
+
+  // Must not include searchPathAfterBase (or other state that updates while typing): VerbUrlFieldControl
+  // remounts on remountKey change, which replaces the input and drops focus.
+  const searchUrlRemountKey = connection.baseUrl ?? '';
+
+  const searchDisplayUrl = useMemo(
+    () => buildSearchDisplayUrl(connection.baseUrl, searchPathAfterBase, query),
+    [connection.baseUrl, searchPathAfterBase, query]
+  );
 
   const currentUrl = useMemo(() => {
     try {
@@ -72,12 +105,13 @@ export function CrudsTester() {
         query,
         body,
         validateMode: 'none',
-        validateOperation: endpointPaths.validateOperation
+        validateOperation: endpointPaths.validateOperation,
+        searchPath: activeOp === 'search' ? searchPathAfterBase : undefined
       }).url;
     } catch {
       return 'Invalid request inputs';
     }
-  }, [activeOp, body, connection.baseUrl, endpointPaths.validateOperation, query, resourceId, selectedResourceType]);
+  }, [activeOp, body, connection.baseUrl, endpointPaths.validateOperation, query, resourceId, searchPathAfterBase, selectedResourceType]);
 
   const executeRequest = async (requestMode: ValidateMode = validateMode) => {
     if (activeOp === 'delete' && requestMode !== 'read-before-delete' && !window.confirm(`Delete ${selectedResourceType}/${resourceId}? This demo will record the request.`)) {
@@ -107,7 +141,8 @@ export function CrudsTester() {
         body,
         auth: connection,
         validateMode: requestMode,
-        validateOperation: endpointPaths.validateOperation
+        validateOperation: endpointPaths.validateOperation,
+        searchPath: activeOp === 'search' ? searchPathAfterBase : undefined
       });
       const response = await send(built.method, built.url, built.body);
       record(response, built.method, built.url, correlationId);
@@ -183,13 +218,17 @@ export function CrudsTester() {
         </div>
       </div>
       <div className="card-body cruds-card-body">
-        <div className={`cruds-controls ${['read', 'update', 'delete'].includes(activeOp) ? 'instance' : ''}`}>
-          <div className="field">
-            <label htmlFor="resourceType">Resource Type</label>
-            <select id="resourceType" value={selectedResourceType} onChange={(event) => setSelectedResourceType(event.target.value)}>
-              {resourceTypes.map((resourceType) => <option key={resourceType}>{resourceType}</option>)}
-            </select>
-          </div>
+        <div
+          className={`cruds-controls ${['read', 'update', 'delete'].includes(activeOp) ? 'instance' : ''} ${activeOp === 'search' ? 'cruds-controls-search' : ''}`}
+        >
+          {activeOp !== 'search' && (
+            <div className="field">
+              <label htmlFor="resourceType">Resource Type</label>
+              <select id="resourceType" value={selectedResourceType} onChange={(event) => setSelectedResourceType(event.target.value)}>
+                {resourceTypes.map((resourceType) => <option key={resourceType}>{resourceType}</option>)}
+              </select>
+            </div>
+          )}
           {['read', 'update', 'delete'].includes(activeOp) && (
             <div className="field">
               <label htmlFor="resourceId">Resource ID</label>
@@ -197,14 +236,30 @@ export function CrudsTester() {
             </div>
           )}
           {activeOp === 'search' && (
-            <div className="field">
-              <label htmlFor="query">Search Query</label>
-              <input id="query" className="input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="_count=10&family=Smith" />
+            <div className="field" style={{ minWidth: 0 }}>
+              <label htmlFor="cruds-search-url">Search URL</label>
+              <VerbUrlFieldControl
+                remountKey={searchUrlRemountKey}
+                method="GET"
+                value={searchDisplayUrl}
+                baseUrlOptions={searchVerbUrlBases}
+                resourceOptions={searchResourceOptions}
+                placeholder="/Patient?_count=10&family=Smith"
+                inputId="cruds-search-url"
+                onChange={(v) => {
+                  const { query: q, pathAfterBase } = parseSearchUrlParts(v, connection.baseUrl, searchPathAfterBase);
+                  setQuery(q);
+                  setSearchPathAfterBase(pathAfterBase);
+                }}
+                onCopy={() => showToast('Copied search URL.')}
+              />
             </div>
           )}
-          <button className="btn secondary" type="button" onClick={() => (activeOp === 'search' ? setQuery('') : setResourceId(''))}>
-            <Eraser size={15} /> Clear
-          </button>
+          {activeOp !== 'search' && (
+            <button className="btn secondary" type="button" onClick={() => setResourceId('')}>
+              <Eraser size={15} /> Clear
+            </button>
+          )}
           <button className="btn primary" type="button" onClick={() => executeRequest()} disabled={loading}>
             <Play size={15} /> {loading ? 'Running...' : labels[activeOp]}
           </button>

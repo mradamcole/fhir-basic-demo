@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>URL control widget</title>
+  <style>
+    .url-control {
+      --uc-bg: #ffffff;
+      --uc-border: #cbd5e1;
+      --uc-text: #0f172a;
+      --uc-muted: #64748b;
+      --uc-focus: #2563eb;
+      --uc-focus-ring: rgba(37, 99, 235, 0.12);
+      --uc-menu-bg: #ffffff;
+      --uc-menu-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+      --uc-verb-get: #2563eb;
+      --uc-verb-post: #16a34a;
+      --uc-verb-put: #d97706;
+      --uc-verb-patch: #7c3aed;
+      --uc-verb-delete: #dc2626;
+      --uc-verb-head: #0891b2;
+      --uc-verb-options: #475569;
+      --uc-verb-default: #334155;
+      --uc-check: #16a34a;
+      --uc-base-prefix: #9a3412;
+
+      box-sizing: border-box;
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      min-height: 40px;
+      max-width: 100%;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      border: 1px solid var(--uc-border);
+      border-radius: 8px;
+      background: var(--uc-bg);
+      position: relative;
+    }
+
+    .url-control *,
+    .url-control *::before,
+    .url-control *::after {
+      box-sizing: border-box;
+    }
+
+    .url-control__verb {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 3.25rem;
+      padding: 0 10px;
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      border-right: 1px solid var(--uc-border);
+      border-radius: 7px 0 0 7px;
+      background: color-mix(in srgb, var(--uc-bg) 92%, var(--uc-verb-default) 8%);
+      color: var(--verb-color, var(--uc-verb-default));
+    }
+
+    .url-control__verb--GET { --verb-color: var(--uc-verb-get); }
+    .url-control__verb--POST { --verb-color: var(--uc-verb-post); }
+    .url-control__verb--PUT { --verb-color: var(--uc-verb-put); }
+    .url-control__verb--PATCH { --verb-color: var(--uc-verb-patch); }
+    .url-control__verb--DELETE { --verb-color: var(--uc-verb-delete); }
+    .url-control__verb--HEAD { --verb-color: var(--uc-verb-head); }
+    .url-control__verb--OPTIONS { --verb-color: var(--uc-verb-options); }
+
+    .url-control__input-wrap {
+      flex: 1 1 auto;
+      min-width: 0;
+      position: relative;
+      display: flex;
+      align-items: stretch;
+    }
+
+    .url-control__base-prefix {
+      display: none;
+      align-items: center;
+      flex-shrink: 0;
+      padding: 9px 0 9px 11px;
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--uc-base-prefix);
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .url-control__input-wrap--path-only .url-control__base-prefix {
+      display: inline-flex;
+    }
+
+    .url-control__input-wrap--path-only .url-control__input {
+      padding-left: 4px;
+    }
+
+    .url-control__input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      outline: none;
+      padding: 9px 11px;
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      font-size: 13px;
+      color: var(--uc-text);
+      background: transparent;
+      border-radius: 0;
+    }
+
+    .url-control__input::placeholder {
+      color: var(--uc-muted);
+      opacity: 0.85;
+    }
+
+    .url-control__input:focus {
+      box-shadow: inset 0 0 0 2px var(--uc-focus-ring);
+    }
+
+    .url-control__menu {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 4px);
+      z-index: 50;
+      margin: 0;
+      padding: 4px 0;
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+      background: var(--uc-menu-bg);
+      border: 1px solid var(--uc-border);
+      border-radius: 8px;
+      box-shadow: var(--uc-menu-shadow);
+    }
+
+    .url-control__menu[hidden] {
+      display: none !important;
+    }
+
+    .url-control__option {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      font-size: 12px;
+      color: var(--uc-text);
+      word-break: break-all;
+    }
+
+    .url-control__option:hover,
+    .url-control__option[aria-selected="true"] {
+      background: color-mix(in srgb, var(--uc-focus) 12%, transparent);
+    }
+
+    .url-control__copy {
+      flex: 0 0 auto;
+      width: 44px;
+      border: 0;
+      border-left: 1px solid var(--uc-border);
+      border-radius: 0 7px 7px 0;
+      background: transparent;
+      color: var(--uc-muted);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      transition: background 0.14s ease, color 0.14s ease;
+    }
+
+    .url-control__copy:hover {
+      background: color-mix(in srgb, var(--uc-border) 35%, transparent);
+      color: var(--uc-text);
+    }
+
+    .url-control__copy:focus-visible {
+      outline: 2px solid var(--uc-focus);
+      outline-offset: 2px;
+    }
+
+    .url-control__copy svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .url-control__copy--copied {
+      color: var(--uc-check);
+    }
+
+    /* Demo page chrome */
+    body.demo-body {
+      margin: 0;
+      padding: 24px;
+      background: #f6f8fb;
+      color: #0f172a;
+      line-height: 1.5;
+    }
+
+    .demo-wrap {
+      max-width: 720px;
+    }
+
+    .demo-wrap h1 {
+      font-size: 1.25rem;
+      margin: 0 0 8px;
+    }
+
+    .demo-wrap p {
+      margin: 0 0 16px;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .demo-field-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+
+    .demo-block {
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body class="demo-body">
+  <div class="demo-wrap">
+    <h1>URL control (standalone widget)</h1>
+    <p>
+      With a configured base list, a path-only value (starts with <kbd>/</kbd>) shows the dark orange <strong>{base}</strong> label; copy and open resolve using the default base (first in the list) plus your path. On <kbd>/</kbd> or <kbd>/Pat</kbd> (only the first path segment, before a second <kbd>/</kbd>), an alphabetical FHIR R4 resource typeahead opens. Deeper paths such as <kbd>/Patient/123</kbd> do not use that list. For non-path values, type substrings of a configured base URL to open the base URL list. Single-click the copy icon for the resolved URL; double-click to open it in a new tab.
+    </p>
+
+    <div class="demo-block">
+      <span class="demo-field-label" id="demo1-label">Example (GET)</span>
+      <div
+        class="url-control"
+        data-url-control-autoinit
+        aria-labelledby="demo1-label"
+        data-url-control-method="GET"
+        data-url-control-placeholder="https://… or /Patient"
+        data-url-control-bases='["http://localhost:8000","https://aio-demo.salessbx.smiledigitalhealth.com/provider-fhir/"]'
+        data-url-control-value=""
+      ></div>
+    </div>
+
+    <div class="demo-block">
+      <span class="demo-field-label" id="demo2-label">Example (POST)</span>
+      <div
+        class="url-control"
+        data-url-control-autoinit
+        aria-labelledby="demo2-label"
+        data-url-control-method="POST"
+        data-url-control-placeholder="/Patient"
+        data-url-control-bases='["http://localhost:8000","https://aio-demo.salessbx.smiledigitalhealth.com/provider-fhir/"]'
+        data-url-control-value="/Patient"
+      ></div>
+    </div>
+  </div>
+
+  <script>
+(function (global) {
+  'use strict';
+
+  /** @param {string} baseUrl @param {string} pathSegment */
+  function joinBaseUrlPath(baseUrl, pathSegment) {
+    var base = baseUrl.replace(/\/+$/, '');
+    var path = pathSegment.startsWith('/') ? pathSegment : '/' + pathSegment;
+    return base + path;
+  }
+
+  function parseBasesJson(raw) {
+    if (raw == null || raw === '') return [];
+    try {
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function normalizeSlashes(value) {
+    return String(value).replace(/\\/g, '/');
+  }
+
+  /** Path-only: leading slash, not an absolute http(s) URL */
+  function isPathOnly(value) {
+    var v = normalizeSlashes(String(value)).trim();
+    if (!v) return false;
+    if (/^https?:\/\//i.test(v)) return false;
+    if (v.startsWith('//')) return false;
+    return v.startsWith('/');
+  }
+
+  /**
+   * @param {string[]} bases
+   * @param {string} tail path after leading slashes (may include more slashes)
+   */
+  function filterBases(bases, tail) {
+    var q = tail.trim().toLowerCase();
+    if (!q) return bases.slice();
+    var filtered = bases.filter(function (b) {
+      return String(b).toLowerCase().indexOf(q) !== -1;
+    });
+    return filtered.length ? filtered : bases.slice();
+  }
+
+  /**
+   * Typeahead: substring match only, no fallback to full list.
+   * @param {string[]} bases
+   * @param {string} query non-empty trimmed query
+   * @returns {string[]}
+   */
+  function filterBasesStrict(bases, query) {
+    var q = String(query).trim().toLowerCase();
+    if (!q) return [];
+    return bases.filter(function (b) {
+      return String(b).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  /** @param {string} norm normalized input value */
+  function getMenuTypeaheadQuery(norm) {
+    var v = String(norm).trim();
+    if (!v) return '';
+    if (isPathOnly(v)) {
+      return v.replace(/^\/+/, '').trim();
+    }
+    return v;
+  }
+
+  /** R4 codes from http://hl7.org/fhir/R4/codesystem-resource-types.json minus abstract Resource, DomainResource; sorted A–Z */
+  var FHIR_R4_RESOURCE_TYPES = (
+    'Account,ActivityDefinition,AdverseEvent,AllergyIntolerance,Appointment,AppointmentResponse,AuditEvent,Basic,Binary,BiologicallyDerivedProduct,BodyStructure,Bundle,CapabilityStatement,CarePlan,CareTeam,CatalogEntry,ChargeItem,ChargeItemDefinition,Claim,ClaimResponse,ClinicalImpression,CodeSystem,Communication,CommunicationRequest,CompartmentDefinition,Composition,ConceptMap,Condition,Consent,Contract,Coverage,CoverageEligibilityRequest,CoverageEligibilityResponse,DetectedIssue,Device,DeviceDefinition,DeviceMetric,DeviceRequest,DeviceUseStatement,DiagnosticReport,DocumentManifest,DocumentReference,EffectEvidenceSynthesis,Encounter,Endpoint,EnrollmentRequest,EnrollmentResponse,EpisodeOfCare,EventDefinition,Evidence,EvidenceVariable,ExampleScenario,ExplanationOfBenefit,FamilyMemberHistory,Flag,Goal,GraphDefinition,Group,GuidanceResponse,HealthcareService,ImagingStudy,Immunization,ImmunizationEvaluation,ImmunizationRecommendation,ImplementationGuide,InsurancePlan,Invoice,Library,Linkage,List,Location,Measure,MeasureReport,Media,Medication,MedicationAdministration,MedicationDispense,MedicationKnowledge,MedicationRequest,MedicationStatement,MedicinalProduct,MedicinalProductAuthorization,MedicinalProductContraindication,MedicinalProductIndication,MedicinalProductIngredient,MedicinalProductInteraction,MedicinalProductManufactured,MedicinalProductPackaged,MedicinalProductPharmaceutical,MedicinalProductUndesirableEffect,MessageDefinition,MessageHeader,MolecularSequence,NamingSystem,NutritionOrder,Observation,ObservationDefinition,OperationDefinition,OperationOutcome,Organization,OrganizationAffiliation,Parameters,Patient,PaymentNotice,PaymentReconciliation,Person,PlanDefinition,Practitioner,PractitionerRole,Procedure,Provenance,Questionnaire,QuestionnaireResponse,RelatedPerson,RequestGroup,ResearchDefinition,ResearchElementDefinition,ResearchStudy,ResearchSubject,RiskAssessment,RiskEvidenceSynthesis,Schedule,SearchParameter,ServiceRequest,Slot,Specimen,SpecimenDefinition,StructureDefinition,StructureMap,Subscription,Substance,SubstanceNucleicAcid,SubstancePolymer,SubstanceProtein,SubstanceReferenceInformation,SubstanceSourceMaterial,SubstanceSpecification,SupplyDelivery,SupplyRequest,Task,TerminologyCapabilities,TestReport,TestScript,ValueSet,VerificationResult,VisionPrescription'
+  ).split(',');
+
+  /** @param {string} norm */
+  function isPathOnlyFirstSegment(norm) {
+    var v = normalizeSlashes(String(norm)).trim();
+    return isPathOnly(v) && /^\/[^/]*$/.test(v);
+  }
+
+  /** First path segment without leading slash; only when {@link isPathOnlyFirstSegment} */
+  function getFirstPathSegment(norm) {
+    var v = normalizeSlashes(String(norm)).trim();
+    if (!/^\/[^/]*$/.test(v)) return '';
+    return v.replace(/^\/+/, '');
+  }
+
+  /**
+   * @param {string[]} sortedTypes alphabetically sorted resource type names
+   * @param {string} seg filter (empty = all types)
+   */
+  function filterFhirResourcesStrict(sortedTypes, seg) {
+    var q = String(seg).trim().toLowerCase();
+    if (!q) return sortedTypes.slice();
+    return sortedTypes.filter(function (r) {
+      return String(r).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  var COPY_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+  var CHECK_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  var VERB_CLASS = {
+    GET: 'url-control__verb--GET',
+    POST: 'url-control__verb--POST',
+    PUT: 'url-control__verb--PUT',
+    PATCH: 'url-control__verb--PATCH',
+    DELETE: 'url-control__verb--DELETE',
+    HEAD: 'url-control__verb--HEAD',
+    OPTIONS: 'url-control__verb--OPTIONS'
+  };
+
+  /**
+   * @param {HTMLElement} container
+   * @param {object} options
+   * @returns {{ getValue: function(): string, setValue: function(string): void, destroy: function(): void }}
+   */
+  function mount(container, options) {
+    options = options || {};
+    var method = (options.method || 'GET').toUpperCase();
+    var baseUrlOptions = options.baseUrlOptions || [];
+    var value = options.value != null ? String(options.value) : '';
+    var placeholder = options.placeholder || '';
+    var onChange = typeof options.onChange === 'function' ? options.onChange : null;
+    var onCopy = typeof options.onCopy === 'function' ? options.onCopy : null;
+    var onOpen = typeof options.onOpen === 'function' ? options.onOpen : null;
+    var labelledBy = options.labelledBy || container.getAttribute('aria-labelledby') || '';
+
+    container.innerHTML = '';
+    container.classList.add('url-control');
+    if (labelledBy) container.setAttribute('aria-labelledby', labelledBy);
+
+    var verbEl = document.createElement('span');
+    verbEl.className = 'url-control__verb ' + (VERB_CLASS[method] || '');
+    verbEl.textContent = method;
+    verbEl.setAttribute('aria-hidden', 'true');
+
+    var wrap = document.createElement('div');
+    wrap.className = 'url-control__input-wrap';
+
+    var basePrefixEl = document.createElement('span');
+    basePrefixEl.className = 'url-control__base-prefix';
+    basePrefixEl.textContent = '{base}';
+    basePrefixEl.setAttribute('aria-hidden', 'true');
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'url-control__input';
+    input.value = normalizeSlashes(value);
+    input.placeholder = placeholder;
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-haspopup', 'listbox');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', '');
+    input.setAttribute('role', 'combobox');
+
+    var menuId = 'uc-menu-' + Math.random().toString(36).slice(2);
+    var listbox = document.createElement('ul');
+    listbox.className = 'url-control__menu';
+    listbox.id = menuId;
+    listbox.setAttribute('role', 'listbox');
+    listbox.hidden = true;
+    input.setAttribute('aria-controls', menuId);
+
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'url-control__copy';
+    copyBtn.setAttribute('aria-label', 'Copy URL');
+    copyBtn.innerHTML = COPY_SVG;
+
+    wrap.appendChild(basePrefixEl);
+    wrap.appendChild(input);
+    wrap.appendChild(listbox);
+    container.appendChild(verbEl);
+    container.appendChild(wrap);
+    container.appendChild(copyBtn);
+
+    var activeIndex = -1;
+    var menuOpen = false;
+    var menuMode = null;
+    var copyTimer = null;
+    var checkmarkTimer = null;
+    var blurCloseTimer = null;
+
+    function getCurrentMenuKind() {
+      if (!baseUrlOptions.length) return null;
+      var v = normalizeSlashes(input.value).trim();
+      if (isPathOnly(v) && isPathOnlyFirstSegment(v)) {
+        var seg = getFirstPathSegment(v);
+        if (filterFhirResourcesStrict(FHIR_R4_RESOURCE_TYPES, seg).length > 0) return 'fhir';
+      }
+      var q = getMenuTypeaheadQuery(v);
+      if (!q) return null;
+      if (filterBasesStrict(baseUrlOptions, q).length > 0) return 'bases';
+      return null;
+    }
+
+    function resolveUrlForActions() {
+      var v = getValue().trim();
+      if (!v) return '';
+      if (isPathOnly(v) && baseUrlOptions.length) {
+        return joinBaseUrlPath(baseUrlOptions[0], v);
+      }
+      return v;
+    }
+
+    function updatePathOnlyUi() {
+      var v = getValue();
+      if (isPathOnly(v) && baseUrlOptions.length) {
+        wrap.classList.add('url-control__input-wrap--path-only');
+      } else {
+        wrap.classList.remove('url-control__input-wrap--path-only');
+      }
+    }
+
+    function getPathForJoin() {
+      var v = normalizeSlashes(input.value);
+      if (!v.startsWith('/')) return v;
+      return v;
+    }
+
+    function shouldShowMenu() {
+      return getCurrentMenuKind() !== null;
+    }
+
+    function openMenu() {
+      menuMode = getCurrentMenuKind();
+      if (!menuMode) return;
+      menuOpen = true;
+      listbox.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      renderOptions();
+    }
+
+    function closeMenu() {
+      menuMode = null;
+      menuOpen = false;
+      activeIndex = -1;
+      listbox.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      listbox.innerHTML = '';
+    }
+
+    function renderOptions() {
+      menuMode = getCurrentMenuKind();
+      if (!menuMode) {
+        closeMenu();
+        return;
+      }
+      var v = normalizeSlashes(input.value);
+      var items;
+      if (menuMode === 'fhir') {
+        items = filterFhirResourcesStrict(FHIR_R4_RESOURCE_TYPES, getFirstPathSegment(v));
+      } else {
+        items = filterBasesStrict(baseUrlOptions, getMenuTypeaheadQuery(v));
+      }
+      listbox.innerHTML = '';
+      items.forEach(function (row, i) {
+        var li = document.createElement('li');
+        li.className = 'url-control__option';
+        li.setAttribute('role', 'option');
+        li.id = menuId + '-opt-' + i;
+        li.textContent = row;
+        if (menuMode === 'fhir') li.dataset.resourceType = row;
+        else li.dataset.base = row;
+        if (i === activeIndex) li.setAttribute('aria-selected', 'true');
+        else li.setAttribute('aria-selected', 'false');
+        listbox.appendChild(li);
+      });
+      if (activeIndex >= items.length) activeIndex = items.length - 1;
+      if (activeIndex < 0 && items.length) activeIndex = 0;
+      syncActiveDescendant();
+    }
+
+    function syncActiveDescendant() {
+      var opts = listbox.querySelectorAll('[role="option"]');
+      opts.forEach(function (el, i) {
+        if (i === activeIndex) {
+          el.setAttribute('aria-selected', 'true');
+          input.setAttribute('aria-activedescendant', el.id);
+        } else {
+          el.setAttribute('aria-selected', 'false');
+        }
+      });
+      if (activeIndex < 0) input.removeAttribute('aria-activedescendant');
+    }
+
+    function selectBase(base) {
+      var path = getPathForJoin();
+      var joined;
+      if (isPathOnly(path)) {
+        if (!path.startsWith('/')) path = '/' + path;
+        joined = joinBaseUrlPath(base, path);
+      } else {
+        joined = String(base);
+      }
+      input.value = joined;
+      closeMenu();
+      if (onChange) onChange(joined);
+      updatePathOnlyUi();
+      input.focus();
+    }
+
+    function selectFhirResource(resourceType) {
+      input.value = '/' + resourceType;
+      closeMenu();
+      if (onChange) onChange(getValue());
+      updatePathOnlyUi();
+      input.focus();
+    }
+
+    function pickListOption(opt) {
+      if (!opt) return;
+      if (opt.dataset.resourceType) selectFhirResource(opt.dataset.resourceType);
+      else if (opt.dataset.base) selectBase(opt.dataset.base);
+    }
+
+    function syncMenuFromInput() {
+      if (shouldShowMenu()) {
+        if (!menuOpen) openMenu();
+        else renderOptions();
+      } else {
+        closeMenu();
+      }
+    }
+
+    input.addEventListener('input', function () {
+      var raw = input.value;
+      var norm = normalizeSlashes(raw);
+      if (norm !== raw) input.value = norm;
+
+      syncMenuFromInput();
+
+      if (onChange) onChange(norm);
+      updatePathOnlyUi();
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (!menuOpen || listbox.hidden) {
+        if (e.key === 'Escape') closeMenu();
+        return;
+      }
+      var opts = listbox.querySelectorAll('[role="option"]');
+      var max = opts.length - 1;
+      if (max < 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = activeIndex < max ? activeIndex + 1 : 0;
+        renderOptions();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = activeIndex > 0 ? activeIndex - 1 : max;
+        renderOptions();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIndex >= 0 && opts[activeIndex]) {
+          pickListOption(opts[activeIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMenu();
+      }
+    });
+
+    listbox.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+    });
+
+    listbox.addEventListener('click', function (e) {
+      var t = e.target;
+      if (t && t.closest && t.closest('[role="option"]')) {
+        var opt = t.closest('[role="option"]');
+        if (opt) pickListOption(opt);
+      }
+    });
+
+    input.addEventListener('blur', function () {
+      blurCloseTimer = setTimeout(function () {
+        closeMenu();
+      }, 150);
+    });
+
+    input.addEventListener('focus', function () {
+      clearTimeout(blurCloseTimer);
+    });
+
+    function getValue() {
+      return normalizeSlashes(input.value);
+    }
+
+    function setValue(v) {
+      input.value = normalizeSlashes(v != null ? String(v) : '');
+      if (onChange) onChange(getValue());
+      updatePathOnlyUi();
+      syncMenuFromInput();
+    }
+
+    function copyUrl() {
+      var url = resolveUrlForActions();
+      if (!url) return Promise.resolve(false);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(url).then(function () {
+          return true;
+        }).catch(function () {
+          return false;
+        });
+      }
+      return Promise.resolve(false);
+    }
+
+    function showCopiedState() {
+      copyBtn.innerHTML = CHECK_SVG;
+      copyBtn.classList.add('url-control__copy--copied');
+      copyBtn.setAttribute('aria-label', 'Copied');
+      clearTimeout(checkmarkTimer);
+      checkmarkTimer = setTimeout(function () {
+        copyBtn.innerHTML = COPY_SVG;
+        copyBtn.classList.remove('url-control__copy--copied');
+        copyBtn.setAttribute('aria-label', 'Copy URL');
+      }, 1500);
+    }
+
+    function tryOpenInNewTab() {
+      var url = resolveUrlForActions();
+      if (!url) return;
+      try {
+        var u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+        global.open(url, '_blank', 'noopener,noreferrer');
+        if (onOpen) onOpen(url);
+      } catch (err) {
+        /* invalid */
+      }
+    }
+
+    copyBtn.addEventListener('click', function (e) {
+      clearTimeout(copyTimer);
+      if (e.detail === 1) {
+        copyTimer = setTimeout(function () {
+          copyUrl().then(function (ok) {
+            if (ok) {
+              showCopiedState();
+              if (onCopy) onCopy();
+            }
+          });
+        }, 220);
+      }
+    });
+
+    copyBtn.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearTimeout(copyTimer);
+      tryOpenInNewTab();
+    });
+
+    updatePathOnlyUi();
+    syncMenuFromInput();
+
+    var api = {
+      getValue: getValue,
+      getResolvedUrl: resolveUrlForActions,
+      setValue: setValue,
+      destroy: function () {
+        clearTimeout(copyTimer);
+        clearTimeout(checkmarkTimer);
+        clearTimeout(blurCloseTimer);
+        container.innerHTML = '';
+        container.classList.remove('url-control');
+      }
+    };
+
+    return api;
+  }
+
+  function autoInit() {
+    var nodes = document.querySelectorAll('.url-control[data-url-control-autoinit]:not([data-url-control-ready])');
+    nodes.forEach(function (el) {
+      el.setAttribute('data-url-control-ready', '1');
+      var method = el.getAttribute('data-url-control-method') || 'GET';
+      var bases = parseBasesJson(el.getAttribute('data-url-control-bases'));
+      var val = el.getAttribute('data-url-control-value') || '';
+      var ph = el.getAttribute('data-url-control-placeholder') || '';
+      var api = mount(el, {
+        method: method,
+        baseUrlOptions: bases,
+        value: val,
+        placeholder: ph,
+        labelledBy: el.getAttribute('aria-labelledby') || ''
+      });
+      el.urlControlApi = api;
+    });
+  }
+
+  global.urlControl = {
+    joinBaseUrlPath: joinBaseUrlPath,
+    filterBases: filterBases,
+    filterBasesStrict: filterBasesStrict,
+    FHIR_R4_RESOURCE_TYPES: FHIR_R4_RESOURCE_TYPES,
+    isPathOnlyFirstSegment: isPathOnlyFirstSegment,
+    getFirstPathSegment: getFirstPathSegment,
+    filterFhirResourcesStrict: filterFhirResourcesStrict,
+    mount: mount,
+    autoInit: autoInit
+  };
+})(typeof window !== 'undefined' ? window : this);
+
+  urlControl.autoInit();
+  </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ import type {
   UiError
 } from '../lib/fhir/types';
 import { normalizeEndpointPathSegment } from '../lib/fhir/endpointPaths';
+import { getCapabilityOperationSummaries, getCapabilityResourceSummaries } from '../lib/fhir/parsers';
 import { readJson, writeJson } from '../lib/storage/localStorage';
 import { DEFAULT_ENDPOINT_PATHS, STORAGE_KEYS, type StoredProfile } from '../lib/storage/schema';
 import { fixtureBaseUrl } from '../test/fixtures/fhir';
@@ -298,19 +299,31 @@ export const useAppStore = create<AppState>((set) => ({
       }
     })),
   setCapability: (capabilityStatement, metadataLatencyMs) =>
-    set((state) => ({
-      endpoint: {
-        ...state.endpoint,
-        capabilityStatement,
-        metadataLatencyMs,
-        metadataLastCheckedAt: new Date().toISOString(),
-        metadataError: undefined
+    set((state) => {
+      const fhirResources = getCapabilityResourceSummaries(capabilityStatement);
+      const fhirOperations = getCapabilityOperationSummaries(capabilityStatement);
+      if (import.meta.env.DEV) {
+        console.log('[FHIR] fhirOperations (from CapabilityStatement)', fhirOperations);
       }
-    })),
+      return {
+        endpoint: {
+          ...state.endpoint,
+          capabilityStatement,
+          fhirResources,
+          fhirOperations,
+          metadataLatencyMs,
+          metadataLastCheckedAt: new Date().toISOString(),
+          metadataError: undefined
+        }
+      };
+    }),
   setMetadataProbeFailure: (metadataError, metadataLatencyMs) =>
     set((state) => ({
       endpoint: {
         ...state.endpoint,
+        capabilityStatement: undefined,
+        fhirResources: [],
+        fhirOperations: [],
         metadataError,
         metadataLatencyMs,
         metadataLastCheckedAt: new Date().toISOString()

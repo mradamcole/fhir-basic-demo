@@ -1,24 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { vi } from 'vitest';
 import type { ConnectionConfig } from './types';
 import { runHealthAndMetadataCheck } from './healthProbe';
 
-const mockNormalizeBaseUrl = vi.fn<(value: string) => string>();
-const mockFhirRequest = vi.fn();
-const mockDemoFhirRequest = vi.fn();
-const mockIsCapabilityStatement = vi.fn<(value: unknown) => boolean>();
-
-vi.mock('./client', () => ({
-  normalizeBaseUrl: (value: string) => mockNormalizeBaseUrl(value),
-  fhirRequest: (...args: unknown[]) => mockFhirRequest(...args)
-}));
-
-vi.mock('./demoClient', () => ({
-  demoFhirRequest: (...args: unknown[]) => mockDemoFhirRequest(...args)
-}));
-
-vi.mock('./parsers', () => ({
-  isCapabilityStatement: (value: unknown) => mockIsCapabilityStatement(value)
-}));
+const mockFetch = vi.fn<typeof fetch>();
 
 const liveConnection: ConnectionConfig = {
   profileName: 'Live',
@@ -30,14 +14,23 @@ const liveConnection: ConnectionConfig = {
 describe('runHealthAndMetadataCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockNormalizeBaseUrl.mockReturnValue('https://example.com/fhir');
-    mockIsCapabilityStatement.mockReturnValue(true);
+    Object.defineProperty(globalThis, 'fetch', {
+      value: mockFetch,
+      configurable: true
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout
+      },
+      configurable: true
+    });
   });
 
   it('updates health and capability state on successful health and metadata checks', async () => {
-    mockFhirRequest
-      .mockResolvedValueOnce({ ok: true, status: 200, elapsedMs: 12 })
-      .mockResolvedValueOnce({ ok: true, status: 200, elapsedMs: 14, jsonBody: { resourceType: 'CapabilityStatement' } });
+    mockFetch
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+      .mockResolvedValueOnce(new Response('{"resourceType":"CapabilityStatement"}', { status: 200, headers: { 'content-type': 'application/fhir+json' } }));
 
     const setHealthProbe = vi.fn();
     const setCapability = vi.fn();
@@ -56,16 +49,16 @@ describe('runHealthAndMetadataCheck', () => {
     expect(setHealthProbe).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'reachable',
-        latencyMs: 12
+        latencyMs: expect.any(Number)
       })
     );
-    expect(setCapability).toHaveBeenCalledWith({ resourceType: 'CapabilityStatement' }, 14);
+    expect(setCapability).toHaveBeenCalledWith({ resourceType: 'CapabilityStatement' }, expect.any(Number));
     expect(setMetadataProbeFailure).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith('Connected. CapabilityStatement loaded.');
   });
 
   it('stops after unauthorized health response', async () => {
-    mockFhirRequest.mockResolvedValueOnce({ ok: false, status: 401, elapsedMs: 8 });
+    mockFetch.mockResolvedValueOnce(new Response('', { status: 401 }));
 
     const setHealthProbe = vi.fn();
     const setCapability = vi.fn();
@@ -81,11 +74,11 @@ describe('runHealthAndMetadataCheck', () => {
       showToast
     });
 
-    expect(mockFhirRequest).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(setHealthProbe).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'unauthorized',
-        latencyMs: 8
+        latencyMs: expect.any(Number)
       })
     );
     expect(setCapability).not.toHaveBeenCalled();

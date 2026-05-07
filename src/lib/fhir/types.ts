@@ -36,6 +36,8 @@ export type EndpointState = {
   error?: UiError;
   /** Metadata probe (e.g. GET /metadata) — CapabilityStatement summary */
   capabilityStatement?: CapabilityStatement;
+  fhirResources?: CapabilityResourceSummary[];
+  fhirOperations?: CapabilityOperationSummary[];
   metadataLatencyMs?: number;
   metadataLastCheckedAt?: string;
   metadataError?: UiError;
@@ -79,6 +81,20 @@ export type FhirResource = {
   [key: string]: unknown;
 };
 
+export type CapabilityResourceSummary = {
+  type: string;
+  interactions: string[];
+  searchParams: string[];
+};
+
+export type CapabilityOperationSummary = {
+  /** Scope before the operation (e.g. `Patient`); empty string for system-level operations. */
+  prefix: string;
+  /** Normalized operation token, always starting with `$` (e.g. `$validate`). */
+  name: string;
+  definition?: string;
+};
+
 export type CapabilityStatement = FhirResource & {
   resourceType: 'CapabilityStatement';
   fhirVersion?: string;
@@ -87,12 +103,20 @@ export type CapabilityStatement = FhirResource & {
     version?: string;
   };
   rest?: Array<{
+    operation?: CapabilityStatementOperation[];
     resource?: Array<{
       type?: string;
       interaction?: Array<{ code?: string }>;
+      operation?: CapabilityStatementOperation[];
       searchParam?: Array<{ name?: string; type?: string; documentation?: string }>;
     }>;
   }>;
+};
+
+export type CapabilityStatementOperation = {
+  name?: string;
+  definition?: string;
+  documentation?: string;
 };
 
 export type Bundle = FhirResource & {

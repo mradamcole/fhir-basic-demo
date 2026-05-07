@@ -12,10 +12,12 @@ export const fixtureCapabilityStatement: CapabilityStatement = {
   },
   rest: [
     {
+      operation: [{ name: 'meta', definition: 'http://hl7.org/fhir/OperationDefinition/Resource-meta' }],
       resource: [
         {
           type: 'Patient',
           interaction: [{ code: 'create' }, { code: 'read' }, { code: 'update' }, { code: 'delete' }, { code: 'search-type' }],
+          operation: [{ name: 'validate', definition: 'http://hl7.org/fhir/OperationDefinition/Resource-validate' }],
           searchParam: [{ name: '_count' }, { name: 'family' }, { name: 'given' }, { name: 'birthdate' }]
         },
         {

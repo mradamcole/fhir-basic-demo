@@ -1,5 +1,5 @@
 import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../../app/store';
 import { runHealthAndMetadataCheck } from '../../lib/fhir/healthProbe';
 
@@ -15,6 +15,18 @@ export function HealthCheckCard() {
   const [loading, setLoading] = useState(false);
   const [healthPathDraft, setHealthPathDraft] = useState(endpointPaths.health);
   const [metadataPathDraft, setMetadataPathDraft] = useState(endpointPaths.metadata);
+  const resourceSummary = useMemo(
+    () => formatMetadataList(endpoint.fhirResources?.map((resource) => resource.type), endpoint.capabilityStatement != null),
+    [endpoint.capabilityStatement, endpoint.fhirResources]
+  );
+  const uniqueOperationDisplayNames = useMemo(() => {
+    if (!endpoint.fhirOperations?.length) return undefined;
+    return [...new Set(endpoint.fhirOperations.map((op) => op.name))].sort((a, b) => a.localeCompare(b));
+  }, [endpoint.fhirOperations]);
+  const operationSummary = useMemo(
+    () => formatMetadataList(uniqueOperationDisplayNames?.map((name) => formatOperation({ name })), endpoint.capabilityStatement != null),
+    [endpoint.capabilityStatement, uniqueOperationDisplayNames]
+  );
 
   useEffect(() => {
     setHealthPathDraft(endpointPaths.health);
@@ -132,6 +144,14 @@ export function HealthCheckCard() {
             <div className="kv-val">{endpoint.capabilityStatement?.software?.version ?? 'Unknown'}</div>
           </div>
           <div className="kv-row">
+            <div className="kv-key">FHIR Resources</div>
+            <div className="kv-val">{resourceSummary}</div>
+          </div>
+          <div className="kv-row">
+            <div className="kv-key">FHIR Operations</div>
+            <div className="kv-val">{operationSummary}</div>
+          </div>
+          <div className="kv-row">
             <div className="kv-key">Last Checked</div>
             <div className="kv-val">{endpoint.lastCheckedAt ? new Date(endpoint.lastCheckedAt).toLocaleString() : 'Not checked'}</div>
           </div>
@@ -143,4 +163,16 @@ export function HealthCheckCard() {
       </div>
     </section>
   );
+}
+
+function formatMetadataList(items: string[] | undefined, loaded: boolean): string {
+  if (!loaded) return 'Not loaded';
+  if (!items?.length) return '0 found';
+  const visibleItems = items.slice(0, 4);
+  const remainder = items.length - visibleItems.length;
+  return `${items.length} found: ${visibleItems.join(', ')}${remainder > 0 ? `, +${remainder} more` : ''}`;
+}
+
+function formatOperation(operation: { name: string; resourceType?: string }): string {
+  return operation.name.startsWith('$') ? operation.name : `$${operation.name}`;
 }

@@ -1,0 +1,200 @@
+.verb-url-field {
+  --vuf-bg: #ffffff;
+  --vuf-border: #cbd5e1;
+  --vuf-text: #0f172a;
+  --vuf-muted: #64748b;
+  --vuf-focus: #2563eb;
+  --vuf-focus-ring: rgba(37, 99, 235, 0.12);
+  --vuf-menu-bg: #ffffff;
+  --vuf-menu-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+  --vuf-verb-get: #2563eb;
+  --vuf-verb-post: #16a34a;
+  --vuf-verb-put: #d97706;
+  --vuf-verb-patch: #7c3aed;
+  --vuf-verb-delete: #dc2626;
+  --vuf-verb-head: #0891b2;
+  --vuf-verb-options: #475569;
+  --vuf-verb-default: #334155;
+  --vuf-check: #16a34a;
+  --vuf-base-prefix: #9a3412;
+
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 40px;
+  max-width: 100%;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  border: 1px solid var(--vuf-border);
+  border-radius: 8px;
+  background: var(--vuf-bg);
+  position: relative;
+}
+
+.verb-url-field *,
+.verb-url-field *::before,
+.verb-url-field *::after {
+  box-sizing: border-box;
+}
+
+.verb-url-field__verb {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.25rem;
+  padding: 0 10px;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  border-right: 1px solid var(--vuf-border);
+  border-radius: 7px 0 0 7px;
+  background: color-mix(in srgb, var(--vuf-bg) 92%, var(--vuf-verb-default) 8%);
+  color: var(--verb-color, var(--vuf-verb-default));
+}
+
+.verb-url-field__verb--GET {
+  --verb-color: var(--vuf-verb-get);
+}
+.verb-url-field__verb--POST {
+  --verb-color: var(--vuf-verb-post);
+}
+.verb-url-field__verb--PUT {
+  --verb-color: var(--vuf-verb-put);
+}
+.verb-url-field__verb--PATCH {
+  --verb-color: var(--vuf-verb-patch);
+}
+.verb-url-field__verb--DELETE {
+  --verb-color: var(--vuf-verb-delete);
+}
+.verb-url-field__verb--HEAD {
+  --verb-color: var(--vuf-verb-head);
+}
+.verb-url-field__verb--OPTIONS {
+  --verb-color: var(--vuf-verb-options);
+}
+
+.verb-url-field__input-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.verb-url-field__base-prefix {
+  display: none;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 9px 0 9px 11px;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--vuf-base-prefix);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.verb-url-field__input-wrap--path-only .verb-url-field__base-prefix {
+  display: inline-flex;
+}
+
+.verb-url-field__input-wrap--path-only .verb-url-field__input {
+  padding-left: 4px;
+}
+
+.verb-url-field__input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  padding: 9px 11px;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 13px;
+  color: var(--vuf-text);
+  background: transparent;
+  border-radius: 0;
+}
+
+.verb-url-field__input::placeholder {
+  color: var(--vuf-muted);
+  opacity: 0.85;
+}
+
+.verb-url-field__input:focus {
+  box-shadow: inset 0 0 0 2px var(--vuf-focus-ring);
+}
+
+.verb-url-field__menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--vuf-menu-bg);
+  border: 1px solid var(--vuf-border);
+  border-radius: 8px;
+  box-shadow: var(--vuf-menu-shadow);
+}
+
+.verb-url-field__menu[hidden] {
+  display: none !important;
+}
+
+.verb-url-field__option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 12px;
+  color: var(--vuf-text);
+  word-break: break-all;
+}
+
+.verb-url-field__option:hover,
+.verb-url-field__option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--vuf-focus) 12%, transparent);
+}
+
+.verb-url-field__copy {
+  flex: 0 0 auto;
+  width: 44px;
+  border: 0;
+  border-left: 1px solid var(--vuf-border);
+  border-radius: 0 7px 7px 0;
+  background: transparent;
+  color: var(--vuf-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+
+.verb-url-field__copy:hover {
+  background: color-mix(in srgb, var(--vuf-border) 35%, transparent);
+  color: var(--vuf-text);
+}
+
+.verb-url-field__copy:focus-visible {
+  outline: 2px solid var(--vuf-focus);
+  outline-offset: 2px;
+}
+
+.verb-url-field__copy svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.verb-url-field__copy--copied {
+  color: var(--vuf-check);
+}

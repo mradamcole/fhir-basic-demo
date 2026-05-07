@@ -11,6 +11,17 @@ describe('buildFhirRequest', () => {
     expect(request).toMatchObject({ method: 'GET', url: 'https://demo.fhir.local/Patient?_count=10' });
   });
 
+  it('builds a search URL with a multi-segment searchPath', () => {
+    const request = buildFhirRequest({
+      op: 'search',
+      baseUrl: 'https://demo.fhir.local',
+      resourceType: 'Observation',
+      searchPath: 'Patient/123/Observation',
+      query: 'code=http://loinc.org|8867-4'
+    });
+    expect(request.url).toBe('https://demo.fhir.local/Patient/123/Observation?code=http://loinc.org|8867-4');
+  });
+
   it('builds validate-before update URL', () => {
     const request = buildFhirRequest({
       op: 'update',
