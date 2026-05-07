@@ -41,8 +41,8 @@ export function ResourceSummaryPanel({ value }: { value: unknown }) {
       <div className="mini-header">
         <span id="summary-title">Resource Summary</span>
       </div>
-      <div className="mini-body">
-        <div className="kv">
+      <div id="resource-summary-panel-body" className="mini-body">
+        <div className="kv" style={{ height: 'fit-content' }}>
           {summarize(value).map((row) => (
             <div className="kv-row" key={row.key}>
               <div className="kv-key">{row.key}</div>
